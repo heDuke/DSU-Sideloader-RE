@@ -1,7 +1,7 @@
 package vegabobo.dsusideloader.preparation
 
 import android.net.Uri
-import java.math.BigInteger
+import java.io.IOException
 import kotlinx.coroutines.Job
 import vegabobo.dsusideloader.core.StorageManager
 import vegabobo.dsusideloader.model.DSUConstants
@@ -127,33 +127,22 @@ class Preparation(
             return Pair(uri, userSelectedImageSize)
         }
 
-        onStepUpdate(InstallationStep.PROCESSING)
-        val fileSize = storageManager.getFilesizeFromUri(uri)
-        val three_gb = Int.MAX_VALUE.toLong() * 1.5 // 2^32 * 0.75
-
-        // If the .gz is smaller than 3gb, then try returning the image size
-        // by reading the lasts four bytes.
-        if (fileSize < three_gb) {
-            val inputStream = storageManager.openInputStream(uri)
-            inputStream.skip(fileSize - 4)
-            val bytes = ByteArray(4)
-            inputStream.read(bytes)
-            bytes.reverse() // Little endian -> Big endian
-            val imageSize = BigInteger(1, bytes).toLong()
-            // If the image size is LOWER than the compressed file, then
-            // the image size must be wrong.
-            if (imageSize > fileSize) {
-                return Pair(uri, imageSize)
+        // The gzip ISIZE trailer is the size modulo 2^32 (and only of the last member),
+        // so it is ambiguous for images >= 4 GiB. Decompress (without writing to disk)
+        // and count the exact size; this also rejects truncated/corrupt archives.
+        onStepUpdate(InstallationStep.DECOMPRESSING_GZIP)
+        val compressedSize = storageManager.getFilesizeFromUri(uri)
+        val imageSize = storageManager.openInputStream(uri).use { input ->
+            GzipImageSize.countUncompressedBytes(input, { job.isCancelled }) { read ->
+                if (compressedSize > 0) {
+                    onPreparationProgressUpdate((read.toFloat() / compressedSize).coerceIn(0F, 1F))
+                }
             }
         }
-        // If the .gz is bigger than 3gb or the fast-way returns a
-        // wrong value, we need to decompress the file and calculate
-        // the size. SLOWWWWWWWWWWWWWW
-        val outputFile = getFileName(uri)
-        onStepUpdate(InstallationStep.DECOMPRESSING_GZIP)
-        val extractedFilePair =
-            FileUnPacker(storageManager, uri, outputFile, job, onPreparationProgressUpdate).unpack()
-        return Pair(uri, extractedFilePair.second)
+        if (imageSize <= 0) {
+            throw IOException("Decompressed image is empty")
+        }
+        return Pair(uri, imageSize)
     }
 
     private fun extractFile(uri: Uri): Pair<Uri, Long> {
