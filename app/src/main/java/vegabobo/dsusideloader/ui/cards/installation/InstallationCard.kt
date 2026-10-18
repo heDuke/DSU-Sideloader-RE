@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.ui.components.CardBox
+import vegabobo.dsusideloader.ui.screen.home.InstallationCardAction
 import vegabobo.dsusideloader.ui.screen.home.InstallationCardState
 import vegabobo.dsusideloader.ui.util.launcherAcResult
 
@@ -30,6 +31,7 @@ fun InstallationCard(
     onSelectFileSuccess: (Uri) -> Unit,
     onClickViewLogs: () -> Unit,
     onClickViewCommands: () -> Unit,
+    onCardAction: (InstallationCardAction) -> Unit,
 ) {
     var chooseFile = Intent(Intent.ACTION_OPEN_DOCUMENT)
     chooseFile.type = "*/*"
@@ -72,6 +74,7 @@ fun InstallationCard(
             onClickRebootToDynOS = onClickRebootToDynOS,
             onClickViewLogs = onClickViewLogs,
             onClickViewCommands = onClickViewCommands,
+            onCardAction = onCardAction,
             minPercentageOfFreeStorage = minPercentageOfFreeStorage,
         )
     }

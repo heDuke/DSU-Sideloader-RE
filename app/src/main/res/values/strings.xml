@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name" translatable="false">DSU Sideloader</string>
 
     <!--
@@ -106,7 +106,6 @@
     <string name="cancel_installation_description">All progress made will be lost, are you sure?</string>
 
     <!-- Installation finished card -->
-    <string name="installation_submitted_unconfirmed">Installation request sent to the DSU system app. Without the READ_LOGS permission its progress and result cannot be confirmed here; follow the DSU notification to check whether it finished.</string>
     <string name="installation_finished_rootless">Image installed successfully, check your notifications to boot into dynamic system.</string>
     <string name="installation_finished">Installation finished.</string>
     <string name="reboot_into_dsu">Reboot into DSU</string>
@@ -242,4 +241,13 @@
 
     <string name="close_app">Close app</string>
     <string name="close_app_question">Close app?</string>
+
+    <!-- P0 strings added in PR #2. Only en + zh-CN are provided so far; other locales
+         intentionally fall back to English until translators update them, hence the
+         per-string MissingTranslation suppression (lint stays enabled for all other strings). -->
+    <string name="installation_submitted_unconfirmed" tools:ignore="MissingTranslation">The request was handed to the system but the installation is not confirmed yet. Confirm it on the system DSU screen and check the progress in the notification.</string>
+    <string name="cancelling_installation" tools:ignore="MissingTranslation">Cancelling and cleaning up…</string>
+    <string name="cleanup_incomplete" tools:ignore="MissingTranslation">Cleanup not completed / system state unknown.\n%1$s\n\nNext: check the DSU notification and the installed DSU status; discard any leftover DSU before installing again (restart the device if it cannot be discarded).</string>
+    <string name="installation_submitted_unconfirmed_details" tools:ignore="MissingTranslation">Details: without the READ_LOGS permission this app cannot read the system DSU progress.</string>
+    <string name="done_in_system_dsu" tools:ignore="MissingTranslation">Finished or cancelled in system</string>
 </resources>

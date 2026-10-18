@@ -7,6 +7,7 @@ import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.preparation.InstallationStep
 import vegabobo.dsusideloader.ui.cards.installation.content.NotInstallingCardContent
 import vegabobo.dsusideloader.ui.cards.installation.content.ProgressableCardContent
+import vegabobo.dsusideloader.ui.screen.home.InstallationCardAction
 import vegabobo.dsusideloader.ui.screen.home.InstallationCardState
 
 @Composable
@@ -25,6 +26,7 @@ fun InstallationCardStep(
     onClickRebootToDynOS: () -> Unit,
     onClickViewLogs: () -> Unit,
     onClickViewCommands: () -> Unit,
+    onCardAction: (InstallationCardAction) -> Unit = {},
 ) {
     when (uiState.installationStep) {
         InstallationStep.NOT_INSTALLING ->
@@ -151,6 +153,20 @@ fun InstallationCardStep(
                 showProgressBar = true,
                 progress = uiState.installationProgress,
             )
+        InstallationStep.CANCELLING ->
+            ProgressableCardContent(
+                text = stringResource(R.string.cancelling_installation),
+                showProgressBar = true,
+                isIndeterminate = true,
+            )
+        InstallationStep.ERROR_CLEANUP_INCOMPLETE ->
+            ProgressableCardContent(
+                text = stringResource(R.string.cleanup_incomplete, uiState.errorText),
+                textFirstButton = stringResource(id = R.string.view_logs),
+                onClickFirstButton = onClickViewLogs,
+                textSecondButton = stringResource(id = R.string.mreturn),
+                onClickSecondButton = { onCardAction(InstallationCardAction.ACK_CLEANUP_INCOMPLETE) },
+            )
         InstallationStep.ERROR ->
             ProgressableCardContent(
                 text = stringResource(R.string.unknown_error, uiState.errorText),
@@ -243,9 +259,10 @@ fun InstallationCardStep(
             )
         InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED ->
             ProgressableCardContent(
-                text = stringResource(R.string.installation_submitted_unconfirmed),
-                textSecondButton = stringResource(id = R.string.mreturn),
-                onClickSecondButton = onClickClear,
+                text = stringResource(R.string.installation_submitted_unconfirmed) + "\n\n" +
+                    stringResource(R.string.installation_submitted_unconfirmed_details),
+                textSecondButton = stringResource(id = R.string.done_in_system_dsu),
+                onClickSecondButton = { onCardAction(InstallationCardAction.ACK_UNCONFIRMED) },
             )
         InstallationStep.INSTALL_SUCCESS ->
             ProgressableCardContent(

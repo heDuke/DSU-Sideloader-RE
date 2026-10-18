@@ -38,7 +38,7 @@ class DsuInstallPipelineTest {
 
         override fun enableDynamicSystemFeature() { calls += "setDynProp" }
         override fun isInUse() = inUse
-        override fun isInstalled() = installed
+        override fun isInstalled() = installedOverride?.invoke() ?: installed
         override fun forceStopDsuApp() { calls += "forceStop" }
         override fun startInstallation(slot: String): Boolean {
             calls += "start:$slot"
@@ -77,14 +77,20 @@ class DsuInstallPipelineTest {
             calls += "finish"
             return finishOk
         }
+        var abortResult: () -> Boolean = { true }
+        var removeResult: () -> Boolean = { installed = false; true }
+        var installedAfterCleanup: (() -> Boolean)? = null
         override fun abort(): Boolean {
             calls += "abort"
-            return true
+            return abortResult()
         }
         override fun remove(): Boolean {
             calls += "remove"
-            return true
+            val r = removeResult()
+            installedAfterCleanup?.let { f -> installedOverride = f }
+            return r
         }
+        var installedOverride: (() -> Boolean)? = null
     }
 
     private val payload = ByteArray(100) { it.toByte() }
@@ -154,7 +160,7 @@ class DsuInstallPipelineTest {
         assertEquals(step, result.step)
         assertFalse("finish must not be called: ${b.calls}", b.calls.contains("finish"))
         assertEquals(listOf("abort", "remove"), b.calls.takeLast(2))
-        assertEquals(CleanupResult(aborted = true, removed = true), result.cleanup)
+        assertEquals(CleanupResult(aborted = true, removed = true, stillInstalled = false), result.cleanup)
         assertEquals(0, b.openChannels)
     }
 
@@ -268,7 +274,7 @@ class DsuInstallPipelineTest {
         b.submitOk = { if (it == 2) cancelled.set(true); true }
         val r = run(b, cancelled = { cancelled.get() })
         assertTrue(r is DsuInstallResult.Cancelled)
-        assertEquals(CleanupResult(true, true), (r as DsuInstallResult.Cancelled).cleanup)
+        assertEquals(CleanupResult(true, true, stillInstalled = false), (r as DsuInstallResult.Cancelled).cleanup)
         assertFalse(b.calls.contains("finish"))
         assertEquals(0, b.openChannels)
     }
@@ -290,6 +296,56 @@ class DsuInstallPipelineTest {
         // abort while creating + cleanup abort/remove
         assertTrue(b.calls.count { it == "abort" } >= 1)
         assertEquals("remove", b.calls.last())
+    }
+
+    // --- Review R2: cleanup results are complete and propagated ---
+
+    private fun failingRun(b: FakeBackend) = run(b.apply { finishOk = false }) as DsuInstallResult.Failed
+
+    @Test
+    fun abortFalseButRemovedAndVerifiedIsCompleteCleanup() {
+        val b = FakeBackend().apply { abortResult = { false } }
+        val c = failingRun(b).cleanup!!
+        assertEquals(CleanupResult(aborted = false, removed = true, stillInstalled = false), c)
+        assertTrue(c.succeeded)
+    }
+
+    @Test
+    fun removeFalseIsIncompleteCleanup() {
+        val b = FakeBackend().apply { removeResult = { false }; installedAfterCleanup = { true } }
+        val c = failingRun(b).cleanup!!
+        assertFalse(c.removed)
+        assertEquals(true, c.stillInstalled)
+        assertFalse(c.succeeded)
+    }
+
+    @Test
+    fun removeThrowsIsIncompleteCleanupWithError() {
+        val b = FakeBackend().apply { removeResult = { throw IllegalStateException("binder died") } }
+        val c = failingRun(b).cleanup!!
+        assertFalse(c.removed)
+        assertTrue(c.error!!.contains("binder died"))
+        assertFalse(c.succeeded)
+    }
+
+    @Test
+    fun removeTrueButStillInstalledOrUnknownIsIncomplete() {
+        val b1 = FakeBackend().apply { installedAfterCleanup = { true } }
+        assertFalse(failingRun(b1).cleanup!!.succeeded)
+        val b2 = FakeBackend().apply { installedAfterCleanup = { throw SecurityException("no permission") } }
+        val c2 = failingRun(b2).cleanup!!
+        assertNull(c2.stillInstalled)
+        assertFalse(c2.succeeded)
+    }
+
+    @Test
+    fun cancelledResultCarriesCleanupFailure() {
+        val b = FakeBackend().apply { removeResult = { false } }
+        val cancelled = AtomicBoolean(false)
+        b.submitOk = { cancelled.set(true); true }
+        val r = run(b, cancelled = { cancelled.get() }) as DsuInstallResult.Cancelled
+        assertFalse(r.cleanup!!.succeeded)
+        assertFalse(b.calls.contains("finish"))
     }
 
     @Test

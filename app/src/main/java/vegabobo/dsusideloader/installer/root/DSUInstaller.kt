@@ -34,20 +34,18 @@ import vegabobo.dsusideloader.service.PrivilegedProvider
  *
  * The installation flow itself (result checks, cancellation, cleanup) lives in
  * [DsuInstallPipeline]; this class only adapts Android/privileged service APIs to it.
- * Exactly one of [onInstallationSuccess], [onInstallationError] or [onInstallationCancelled]
- * is called per run.
+ * [onFinished] is called exactly once per run with the full terminal result, including the
+ * cleanup result, and only after cleanup has returned.
  */
 class DSUInstaller(
     private val application: Application,
     private val userdataSize: Long,
     private val dsuInstallation: DSUInstallationSource,
     private var installationJob: Job = Job(),
-    private val onInstallationError: (error: InstallationStep, errorInfo: String) -> Unit,
     private val onInstallationProgressUpdate: (progress: Float, partition: String) -> Unit,
     private val onCreatePartition: (partition: String) -> Unit,
     private val onInstallationStepUpdate: (step: InstallationStep) -> Unit,
-    private val onInstallationSuccess: () -> Unit,
-    private val onInstallationCancelled: () -> Unit = {},
+    private val onFinished: (result: DsuInstallResult) -> Unit,
 ) : () -> Unit, DynamicSystemImpl() {
 
     private val tag = this.javaClass.simpleName
@@ -186,16 +184,8 @@ class DSUInstaller(
     }
 
     override fun invoke() {
-        when (val result = install()) {
-            is DsuInstallResult.Success -> onInstallationSuccess()
-            is DsuInstallResult.Failed -> {
-                Log.e(tag, "Installation failed: $result")
-                onInstallationError(result.step, result.info)
-            }
-            is DsuInstallResult.Cancelled -> {
-                Log.d(tag, "Installation cancelled: $result")
-                onInstallationCancelled()
-            }
-        }
+        val result = install()
+        Log.d(tag, "Installation finished: $result")
+        onFinished(result)
     }
 }

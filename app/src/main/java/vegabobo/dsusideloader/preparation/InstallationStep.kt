@@ -25,8 +25,14 @@ enum class InstallationStep {
     INSTALLING_ROOTED,
     CREATING_PARTITION,
 
+    // Cancel requested; waiting for the task to stop and clean up (abort/remove)
+    CANCELLING,
+
     // Errors
     ERROR,
+
+    // Cleanup after a failure/cancel did not complete or the system state is unknown
+    ERROR_CLEANUP_INCOMPLETE,
     ERROR_CANCELED,
     ERROR_REQUIRES_DISCARD_DSU,
     ERROR_ALREADY_RUNNING_DYN_OS,

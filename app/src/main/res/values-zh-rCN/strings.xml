@@ -80,7 +80,6 @@
     <string name="cancel_installation_question">是否取消安装？</string>
     <string name="cancel_installation_description">已安装的部分将丢失，确定要取消吗？</string>
     <!-- Installation finished card -->
-    <string name="installation_submitted_unconfirmed">安装请求已提交给系统 DSU 应用。由于没有 READ_LOGS 权限，本应用无法确认安装进度与结果，请通过 DSU 通知查看是否完成。</string>
     <string name="installation_finished_rootless">DSU 安装成功，请检查通知栏提示并重启到动态系统</string>
     <string name="installation_finished">安装已完成</string>
     <string name="reboot_into_dsu">重启到 DSU</string>
@@ -178,4 +177,9 @@
     <string name="discard">移除</string>
     <string name="close_app">关闭 DSU Sideloader</string>
     <string name="close_app_question">确定要关闭 DSU Sideloader 么？</string>
+    <string name="installation_submitted_unconfirmed">请求已交给系统，尚未确认安装完成。请在系统 DSU 页面确认，并查看通知中的进度。</string>
+    <string name="cancelling_installation">正在取消并清理…</string>
+    <string name="cleanup_incomplete">未清理完成/状态未知。\n%1$s\n\n下一步：查看 DSU 通知及已安装 DSU 的状态；再次安装前先丢弃残留的 DSU（无法丢弃时请重启设备）。</string>
+    <string name="installation_submitted_unconfirmed_details">详情：没有 READ_LOGS 权限，本应用无法读取系统 DSU 的安装进度。</string>
+    <string name="done_in_system_dsu">已在系统中完成或取消</string>
 </resources>

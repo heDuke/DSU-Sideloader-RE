@@ -78,8 +78,26 @@ sealed class DsuInstallResult {
     data class Cancelled(val cleanup: CleanupResult?) : DsuInstallResult()
 }
 
-/** Result of best-effort cleanup after a started installation failed or was cancelled. */
-data class CleanupResult(val aborted: Boolean, val removed: Boolean, val error: String? = null)
+/**
+ * Result of best-effort cleanup after a started installation failed or was cancelled.
+ * [stillInstalled] is isInstalled() queried after remove(); null if it could not be queried.
+ */
+data class CleanupResult(
+    val aborted: Boolean,
+    val removed: Boolean,
+    val error: String? = null,
+    val stillInstalled: Boolean? = null,
+) {
+    /**
+     * Cleanup is complete only if remove() succeeded and the system confirms no DSU image is
+     * left. abort() returning false alone is not a failure (nothing may have been in progress).
+     */
+    val succeeded: Boolean get() = removed && error == null && stillInstalled == false
+
+    fun describe(): String =
+        "abort=$aborted, remove=$removed, stillInstalled=${stillInstalled ?: "unknown"}" +
+            (error?.let { ", error=$it" } ?: "")
+}
 
 /**
  * Root/builtin DSU installation flow, modelled after AOSP InstallationAsyncTask.
@@ -192,7 +210,13 @@ class DsuInstallPipeline(
         } catch (e: Exception) {
             error = (error?.let { "$it; " } ?: "") + "remove: $e"
         }
-        val result = CleanupResult(aborted, removed, error)
+        val stillInstalled = try {
+            backend.isInstalled()
+        } catch (e: Exception) {
+            error = (error?.let { "$it; " } ?: "") + "isInstalled: $e"
+            null
+        }
+        val result = CleanupResult(aborted, removed, error, stillInstalled)
         log("Cleanup: $result")
         return result
     }

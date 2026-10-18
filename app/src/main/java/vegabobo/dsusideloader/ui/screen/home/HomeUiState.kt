@@ -26,6 +26,12 @@ data class ImageSizeCardState(
     val text: String = "",
 )
 
+/** Actions of installation card states that need explicit user decisions. */
+enum class InstallationCardAction {
+    ACK_CLEANUP_INCOMPLETE,
+    ACK_UNCONFIRMED,
+}
+
 enum class AdditionalCardState {
     NONE,
     SETUP_STORAGE,
