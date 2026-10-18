@@ -5,6 +5,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryCatalogTest {
+    @Test fun lateSelectionCannotFinishTheNewSelection() {
+        val gate = SourceSelectionGate()
+        val a = gate.begin()
+        val b = gate.begin()
+        assertTrue(!gate.finish(a))
+        assertTrue(gate.finish(b))
+    }
+
+    @Test fun lateCancelCannotCancelTheNextSelection() {
+        val gate = SourceSelectionGate()
+        val a = gate.begin()
+        assertTrue(gate.finish(a))
+        val b = gate.begin()
+        assertTrue(!gate.finish(a))
+        assertTrue(gate.finish(b))
+    }
+
+    @Test fun cancelledSelectionCannotReportALateResult() {
+        val gate = SourceSelectionGate()
+        val a = gate.begin()
+        assertTrue(gate.finish(a))
+        assertTrue(!gate.finish(a))
+    }
+
     @Test fun metadataRoundTripPreservesUnicodeAndSeparators() {
         val image = SavedImage("content://provider/a:1", "测试\tGSI\n.img", "a".repeat(64), 8, BackendPreference.SYSTEM_DSU, true, "备注\nwith\ttabs")
         assertEquals(listOf(image), LibraryCatalog.parse(LibraryCatalog.serialize(listOf(image))))

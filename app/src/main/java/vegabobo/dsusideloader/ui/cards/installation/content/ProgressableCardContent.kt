@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -15,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import vegabobo.dsusideloader.ui.components.buttons.PrimaryButton
 import vegabobo.dsusideloader.ui.components.buttons.SecondaryButton
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ProgressableCardContent(
     text: String,
@@ -33,11 +35,11 @@ fun ProgressableCardContent(
             .fillMaxWidth()
             .padding(top = 12.dp, bottom = 5.dp)
         if (isIndeterminate) {
-            LinearProgressIndicator(modifier = progressBarModifier)
+            LoadingIndicator()
         } else {
-            LinearProgressIndicator(
+            LinearWavyProgressIndicator(
                 modifier = progressBarModifier,
-                progress = progress,
+                progress = { progress },
             )
         }
     }

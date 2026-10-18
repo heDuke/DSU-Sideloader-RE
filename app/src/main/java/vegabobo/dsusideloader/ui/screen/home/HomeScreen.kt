@@ -1,14 +1,20 @@
 package vegabobo.dsusideloader.ui.screen.home
 
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,10 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import kotlin.system.exitProcess
 import kotlinx.coroutines.flow.collectLatest
 import vegabobo.dsusideloader.R
-import vegabobo.dsusideloader.ui.cards.DsuInfoCard
-import vegabobo.dsusideloader.ui.cards.ImageSizeCard
 import vegabobo.dsusideloader.ui.cards.LogcatCard
-import vegabobo.dsusideloader.ui.cards.UserdataCard
 import vegabobo.dsusideloader.ui.cards.installation.InstallationCard
 import vegabobo.dsusideloader.ui.cards.warnings.GrantingPermissionCard
 import vegabobo.dsusideloader.ui.cards.warnings.RequiresLogPermissionCard
@@ -39,9 +42,10 @@ import vegabobo.dsusideloader.ui.cards.warnings.UnsupportedCard
 import vegabobo.dsusideloader.ui.components.CardBox
 import vegabobo.dsusideloader.ui.design.DashboardLayout
 import vegabobo.dsusideloader.ui.design.DashboardSection
+import vegabobo.dsusideloader.ui.design.DashboardTool
+import vegabobo.dsusideloader.ui.design.ExpressiveInstallPane
 import vegabobo.dsusideloader.ui.design.ImageLibraryPanel
-import vegabobo.dsusideloader.ui.design.InstallCustomization
-import vegabobo.dsusideloader.ui.design.OverviewHero
+import vegabobo.dsusideloader.ui.design.InstallPrimaryAction
 import vegabobo.dsusideloader.ui.design.backendLabel
 import vegabobo.dsusideloader.ui.screen.Destinations
 import vegabobo.dsusideloader.ui.sdialogs.CancelSheet
@@ -58,7 +62,7 @@ object HomeLinks {
     const val DSU_DOCS = "https://source.android.com/devices/tech/ota/dynamic-system-updates"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun Home(
     navigate: (String) -> Unit,
@@ -81,6 +85,13 @@ fun Home(
 
     var sectionName by rememberSaveable { mutableStateOf(DashboardSection.OVERVIEW.name) }
     val section = DashboardSection.valueOf(sectionName)
+    val sourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) { homeViewModel.onFileSelectionResult(uri); sectionName = DashboardSection.OVERVIEW.name }
+    }
+    val selectFile = { sourcePicker.launch(arrayOf("application/gzip", "application/x-gzip", "application/x-xz", "application/zip", "application/octet-stream")) }
+    val idle = !uiState.isInstalling()
+    val ready = uiState.passedInitialChecks && uiState.additionalCard == AdditionalCardState.NONE
+
     val warnings: @Composable () -> Unit = {
         Box(modifier = Modifier.animateContentSize()) {
             when (uiState.additionalCard) {
@@ -116,81 +127,85 @@ fun Home(
         }
     }
     val installation: @Composable () -> Unit = {
-        InstallationCard(
-            uiState = uiState.installationCard,
-            onClickInstall = { homeViewModel.onClickInstall() },
-            onClickUnmountSdCardAndRetry = { homeViewModel.onClickUnmountSdCardAndRetry() },
-            onClickSetSeLinuxPermissive = { homeViewModel.onClickSetSeLinuxPermissive() },
-            onClickRetryInstallation = { homeViewModel.onClickRetryInstallation() },
-            onClickClear = { homeViewModel.resetInstallationCard() },
-            onSelectFileSuccess = { homeViewModel.onFileSelectionResult(it) },
-            onClickCancelInstallation = { homeViewModel.onClickCancel() },
-            onClickDiscardInstalledGsiAndInstall = { homeViewModel.onClickDiscardGsiAndStartInstallation() },
-            onClickDiscardDsu = { homeViewModel.showDiscardSheet() },
-            onClickRebootToDynOS = { homeViewModel.onClickRebootToDynOS() },
-            onClickViewLogs = { homeViewModel.showLogsWarning() },
-            onClickViewCommands = { navigate(Destinations.ADBInstallation) },
-            onCardAction = homeViewModel.installationCardActionHandler(uiState.installationCard),
-            minPercentageOfFreeStorage = homeViewModel.allocPercentageInt.toString(),
-        )
-    }
-    val options: @Composable () -> Unit = {
-        Text(stringResource(R.string.re_options), style = MaterialTheme.typography.headlineSmall)
-        UserdataCard(
-            isEnabled = uiState.isInstalling(),
-            uiState = uiState.userDataCard,
-            onCheckedChange = { homeViewModel.onCheckUserdataCard() },
-            onValueChange = { homeViewModel.updateUserdataSize(it) },
-        )
-        ImageSizeCard(
-            isEnabled = uiState.isInstalling(),
-            uiState = uiState.imageSizeCard,
-            onCheckedChange = { homeViewModel.onCheckImageSizeCard() },
-            onValueChange = { homeViewModel.updateImageSize(it) },
-        )
-        InstallCustomization(
-            sourceKey = homeViewModel.session.userSelection.selectedFileUri.toString(),
-            initialNote = uiState.library.firstOrNull { it.uri == homeViewModel.session.userSelection.selectedFileUri.toString() }?.note ?: "",
-            enabled = !uiState.isInstalling(),
-            rootAvailable = homeViewModel.session.isRoot() && Build.VERSION.SDK_INT >= 30,
-            backend = uiState.backend,
-            hash = uiState.expectedSha256,
-            canSave = uiState.installationCard.isInstallable,
-            onBackend = homeViewModel::selectBackend,
-            onHash = homeViewModel::updateExpectedSha256,
-            onSave = homeViewModel::saveCurrentPreset,
-        )
-        if (uiState.libraryError.isNotEmpty()) Text(uiState.libraryError, color = MaterialTheme.colorScheme.error)
+        if (uiState.sourceLoading) {
+            val sourceRequestId = uiState.sourceRequestId
+            CardBox(cardTitle = stringResource(R.string.installation)) {
+                LoadingIndicator()
+                Text(stringResource(R.string.re_reading_source), modifier = Modifier.padding(vertical = 12.dp))
+                FilledTonalButton(onClick = { homeViewModel.cancelSourceSelection(sourceRequestId) }) { Text(stringResource(R.string.cancel)) }
+            }
+        } else {
+            InstallationCard(
+                uiState = uiState.installationCard,
+                onClickInstall = { homeViewModel.onClickInstall() },
+                onClickUnmountSdCardAndRetry = { homeViewModel.onClickUnmountSdCardAndRetry() },
+                onClickSetSeLinuxPermissive = { homeViewModel.onClickSetSeLinuxPermissive() },
+                onClickRetryInstallation = { homeViewModel.onClickRetryInstallation() },
+                onClickClear = { homeViewModel.resetInstallationCard() },
+                onSelectFileSuccess = { homeViewModel.onFileSelectionResult(it) },
+                onClickCancelInstallation = { homeViewModel.onClickCancel() },
+                onClickDiscardInstalledGsiAndInstall = { homeViewModel.onClickDiscardGsiAndStartInstallation() },
+                onClickDiscardDsu = { homeViewModel.showDiscardSheet() },
+                onClickRebootToDynOS = { homeViewModel.onClickRebootToDynOS() },
+                onClickViewLogs = { homeViewModel.showLogsWarning() },
+                onClickViewCommands = { navigate(Destinations.ADBInstallation) },
+                onCardAction = homeViewModel.installationCardActionHandler(uiState.installationCard),
+                minPercentageOfFreeStorage = homeViewModel.allocPercentageInt.toString(),
+            )
+        }
     }
     DashboardLayout(
         section = section,
         onSection = { sectionName = it.name },
         onSettings = { navigate(Destinations.Preferences) },
+        bottomAction = {
+            if (section == DashboardSection.OVERVIEW && idle && ready && !uiState.sourceLoading) {
+                InstallPrimaryAction(
+                    text = stringResource(if (uiState.installationCard.isInstallable) R.string.rx_review_plan else R.string.rx_select_image),
+                    onClick = { if (uiState.installationCard.isInstallable) homeViewModel.onClickInstall() else selectFile() },
+                )
+            } else if (section == DashboardSection.IMAGES) {
+                InstallPrimaryAction(stringResource(R.string.re_add_image), enabled = idle && !uiState.sourceLoading, onClick = selectFile)
+            }
+        },
     ) { wide ->
         when (section) {
             DashboardSection.OVERVIEW -> {
-                OverviewHero(OperationModeUtils.getOperationModeAsString(homeViewModel.session.getOperationMode()))
                 warnings()
-                if (uiState.passedInitialChecks && uiState.additionalCard == AdditionalCardState.NONE) {
-                    if (wide) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                            Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                installation()
-                                FilledTonalButton(onClick = { sectionName = DashboardSection.TASKS.name }) { Text(stringResource(R.string.re_view_task)) }
-                            }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) { options() }
-                        }
+                if (ready) {
+                    if (idle) {
+                        ExpressiveInstallPane(
+                            wide = wide,
+                            filename = uiState.installationCard.text,
+                            sourceLoading = uiState.sourceLoading,
+                            error = uiState.installationCard.errorText,
+                            enabled = idle && !uiState.sourceLoading,
+                            permissionMode = OperationModeUtils.getOperationModeAsString(homeViewModel.session.getOperationMode()),
+                            userdata = uiState.userDataCard, imageSize = uiState.imageSizeCard,
+                            backend = uiState.backend, hash = uiState.expectedSha256,
+                            rootAvailable = homeViewModel.session.isRoot() && Build.VERSION.SDK_INT >= 30,
+                            sourceKey = homeViewModel.session.userSelection.selectedFileUri.toString(),
+                            initialNote = uiState.library.firstOrNull { it.uri == homeViewModel.session.userSelection.selectedFileUri.toString() }?.note ?: "",
+                            onSelectFile = selectFile,
+                            onCancelSource = { homeViewModel.cancelSourceSelection(uiState.sourceRequestId) },
+                            onUserdata = homeViewModel::updateUserdataSize,
+                            onUserdataToggle = { homeViewModel.onCheckUserdataCard() },
+                            onImageSize = homeViewModel::updateImageSize,
+                            onImageSizeToggle = { homeViewModel.onCheckImageSizeCard() },
+                            onBackend = homeViewModel::selectBackend,
+                            onHash = homeViewModel::updateExpectedSha256,
+                            onSave = homeViewModel::saveCurrentPreset,
+                        )
+                        if (uiState.libraryError.isNotEmpty()) Text(uiState.libraryError, color = MaterialTheme.colorScheme.error)
                     } else {
                         installation()
-                        options()
                     }
                 }
             }
             DashboardSection.IMAGES -> ImageLibraryPanel(
                 images = uiState.library,
                 error = uiState.libraryError,
-                enabled = !uiState.isInstalling(),
-                onAdd = { homeViewModel.onFileSelectionResult(it); sectionName = DashboardSection.OVERVIEW.name },
+                enabled = !uiState.isInstalling() && !uiState.sourceLoading,
                 onOpen = { homeViewModel.selectSavedImage(it); sectionName = DashboardSection.OVERVIEW.name },
                 onFavorite = homeViewModel::toggleFavorite,
                 onRemove = homeViewModel::removeSavedImage,
@@ -212,22 +227,15 @@ fun Home(
                 }
             }
             DashboardSection.TOOLS -> {
-                Text(stringResource(R.string.re_tools_title), style = MaterialTheme.typography.headlineSmall)
-                Text(stringResource(R.string.re_tools_body))
-                CardBox(cardTitle = stringResource(R.string.operation_mode)) {
-                    Text(OperationModeUtils.getOperationModeAsString(homeViewModel.session.getOperationMode()), style = MaterialTheme.typography.titleLarge)
-                    Text(stringResource(R.string.re_backend_help), modifier = Modifier.padding(top = 12.dp))
-                }
-                FilledTonalButton(onClick = homeViewModel::showLogsWarning, enabled = uiState.installationLogs.isNotEmpty()) { Text(stringResource(R.string.view_logs)) }
-                if (uiState.installationLogs.isEmpty()) Text(stringResource(R.string.re_logs_empty))
+                Text(stringResource(R.string.operation_mode), style = MaterialTheme.typography.titleMedium)
+                Text(OperationModeUtils.getOperationModeAsString(homeViewModel.session.getOperationMode()), style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(R.string.re_backend_help), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                DashboardTool(Icons.Outlined.Article, stringResource(R.string.view_logs), stringResource(if (uiState.installationLogs.isEmpty()) R.string.re_logs_empty else R.string.rx_log_summary), enabled = uiState.installationLogs.isNotEmpty(), onClick = homeViewModel::showLogsWarning)
                 if (homeViewModel.session.installationScriptPath.isNotEmpty()) {
-                    FilledTonalButton(onClick = { navigate(Destinations.ADBInstallation) }) { Text(stringResource(R.string.installation)) }
+                    DashboardTool(Icons.Outlined.Terminal, stringResource(R.string.rx_adb_commands), stringResource(R.string.rx_adb_summary), onClick = { navigate(Destinations.ADBInstallation) })
                 }
-                FilledTonalButton(onClick = { uriHandler.openUri(HomeLinks.DSU_DOCS) }) { Text(stringResource(R.string.re_help)) }
-                DsuInfoCard(
-                    onClickViewDocs = { uriHandler.openUri(HomeLinks.DSU_DOCS) },
-                    onClickLearnMore = { uriHandler.openUri(HomeLinks.DSU_LEARN_MORE) },
-                )
+                DashboardTool(Icons.Outlined.Info, stringResource(R.string.re_help), stringResource(R.string.rx_dsu_docs), onClick = { uriHandler.openUri(HomeLinks.DSU_DOCS) })
+                DashboardTool(Icons.Outlined.HelpOutline, stringResource(R.string.rx_learn_dsu), stringResource(R.string.rx_learn_summary), onClick = { uriHandler.openUri(HomeLinks.DSU_LEARN_MORE) })
             }
         }
     }

@@ -90,6 +90,14 @@ fun InstallationCardStep(
                 showProgressBar = true,
                 progress = uiState.installationProgress,
             )
+        InstallationStep.VERIFYING_IMAGE_INTEGRITY ->
+            ProgressableCardContent(
+                text = stringResource(R.string.re_verifying_hash),
+                textSecondButton = stringResource(R.string.cancel),
+                onClickSecondButton = onClickCancelInstallation,
+                showProgressBar = true,
+                isIndeterminate = true,
+            )
         InstallationStep.EXTRACTING_FILE ->
             ProgressableCardContent(
                 text = stringResource(R.string.extracting_file),

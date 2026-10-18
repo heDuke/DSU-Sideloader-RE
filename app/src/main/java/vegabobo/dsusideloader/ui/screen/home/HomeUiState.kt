@@ -65,6 +65,8 @@ enum class SheetDisplayState {
 }
 
 data class HomeUiState(
+    val sourceLoading: Boolean = false,
+    val sourceRequestId: Long = 0,
     val library: List<SavedImage> = emptyList(),
     val libraryError: String = "",
     val expectedSha256: String = "",

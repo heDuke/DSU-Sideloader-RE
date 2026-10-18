@@ -1,47 +1,59 @@
 package vegabobo.dsusideloader.ui.design
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.InstallMobile
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.WideNavigationRail
+import androidx.compose.material3.WideNavigationRailItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,92 +62,107 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.loader.BackendPreference
 import vegabobo.dsusideloader.loader.SavedImage
-import vegabobo.dsusideloader.ui.components.ApplicationScreen
-import vegabobo.dsusideloader.ui.components.CardBox
-import vegabobo.dsusideloader.ui.components.TopBar
 
-// Expressive visual tokens use stable APIs supported by this project's Compose version.
-// Newer Material Expressive experimental components can be adopted in a toolchain-only PR.
 enum class DashboardSection(val title: Int, val icon: ImageVector) {
-    OVERVIEW(R.string.re_nav_overview, Icons.Outlined.Dashboard),
+    OVERVIEW(R.string.rx_install, Icons.Outlined.InstallMobile),
     IMAGES(R.string.re_nav_images, Icons.Outlined.FolderOpen),
     TASKS(R.string.re_nav_tasks, Icons.Outlined.TaskAlt),
     TOOLS(R.string.re_nav_tools, Icons.Outlined.Tune),
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DashboardLayout(
     section: DashboardSection,
     onSection: (DashboardSection) -> Unit,
     onSettings: () -> Unit,
+    bottomAction: @Composable () -> Unit = {},
     content: @Composable (Boolean) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
         Row {
             if (wide) {
-                NavigationRail(Modifier.fillMaxHeight().width(112.dp).padding(top = 24.dp)) {
+                WideNavigationRail {
                     DashboardSection.values().forEach { item ->
-                        NavigationRailItem(
+                        WideNavigationRailItem(
                             selected = section == item,
                             onClick = { onSection(item) },
-                            icon = { Icon(item.icon, contentDescription = null) },
+                            icon = { Icon(item.icon, null) },
                             label = { Text(stringResource(item.title)) },
-                            modifier = Modifier.padding(vertical = 8.dp),
+                            railExpanded = false,
                         )
                     }
                 }
             }
-            ApplicationScreen(
-                modifier = Modifier.padding(horizontal = if (wide) 24.dp else 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+            Scaffold(
+                modifier = Modifier.weight(1f),
+                containerColor = MaterialTheme.colorScheme.surface,
                 topBar = {
-                    TopBar(
-                        barTitle = stringResource(section.title),
-                        icon = Icons.Outlined.Settings,
-                        iconContentDescription = stringResource(R.string.settings),
-                        scrollBehavior = it,
-                        onClickIcon = onSettings,
+                    TopAppBar(
+                        title = {
+                            Text(
+                                stringResource(if (section == DashboardSection.OVERVIEW) R.string.app_name else section.title),
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                        },
+                        actions = { IconButton(onSettings) { Icon(Icons.Outlined.Settings, stringResource(R.string.settings)) } },
                     )
                 },
                 bottomBar = {
-                    if (!wide) {
-                        NavigationBar {
-                            DashboardSection.values().forEach { item ->
-                                NavigationBarItem(
-                                    selected = section == item,
-                                    onClick = { onSection(item) },
-                                    icon = { Icon(item.icon, contentDescription = null) },
-                                    label = { Text(stringResource(item.title)) },
-                                )
+                    Column(if (wide) Modifier.navigationBarsPadding() else Modifier) {
+                        bottomAction()
+                        if (!wide) {
+                            ShortNavigationBar {
+                                DashboardSection.values().forEach { item ->
+                                    ShortNavigationBarItem(
+                                        selected = section == item,
+                                        onClick = { onSection(item) },
+                                        icon = { Icon(item.icon, null) },
+                                        label = { Text(stringResource(item.title)) },
+                                    )
+                                }
                             }
                         }
                     }
                 },
-            ) { content(wide) }
+            ) { padding ->
+                Column(
+                    Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = if (wide) 32.dp else 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    Spacer(Modifier.height(4.dp))
+                    content(wide)
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun OverviewHero(mode: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp, bottomEnd = 12.dp, bottomStart = 36.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(stringResource(R.string.re_environment, mode), style = MaterialTheme.typography.labelLarge)
-            Text(stringResource(R.string.re_hero_title), style = MaterialTheme.typography.displaySmall)
-            Text(stringResource(R.string.re_hero_body), style = MaterialTheme.typography.bodyLarge)
-            Text(stringResource(R.string.re_plan_steps), style = MaterialTheme.typography.labelLarge)
+fun InstallPrimaryAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Button(
+                onClick = onClick,
+                shapes = ButtonDefaults.shapes(),
+                enabled = enabled,
+                modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp).heightIn(min = 56.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            ) {
+                Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Icon(Icons.Outlined.ArrowForward, null, modifier = Modifier.padding(start = 12.dp))
+            }
         }
     }
 }
@@ -149,126 +176,88 @@ fun backendLabel(backend: BackendPreference): String = stringResource(
     },
 )
 
-@OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable
-fun InstallCustomization(
-    sourceKey: String,
-    initialNote: String,
-    enabled: Boolean,
-    rootAvailable: Boolean,
-    backend: BackendPreference,
-    hash: String,
-    canSave: Boolean,
-    onBackend: (BackendPreference) -> Unit,
-    onHash: (String) -> Unit,
-    onSave: (String) -> Unit,
-) {
-    var note by remember(sourceKey, initialNote) { mutableStateOf(initialNote) }
-    CardBox(cardTitle = stringResource(R.string.re_backend)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BackendPreference.values().forEach { choice ->
-                if (choice != BackendPreference.ROOT_DIRECT || rootAvailable || backend == choice) {
-                    FilterChip(
-                        selected = backend == choice,
-                        onClick = { onBackend(choice) },
-                        enabled = enabled && (choice != BackendPreference.ROOT_DIRECT || rootAvailable),
-                        label = { Text(backendLabel(choice)) },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    )
-                }
-            }
-        }
-        Text(stringResource(R.string.re_backend_help), style = MaterialTheme.typography.bodyMedium)
-    }
-    CardBox(cardTitle = stringResource(R.string.re_integrity)) {
-        val invalid = hash.isNotEmpty() && !hash.matches(Regex("[a-fA-F0-9]{64}"))
-        OutlinedTextField(
-            value = hash,
-            onValueChange = onHash,
-            enabled = enabled,
-            label = { Text(stringResource(R.string.re_sha_label)) },
-            isError = invalid,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            stringResource(if (invalid) R.string.re_sha_invalid else R.string.re_sha_help),
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (invalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-    }
-    CardBox(cardTitle = stringResource(R.string.re_save_preset)) {
-        Text(stringResource(R.string.re_preset_help), style = MaterialTheme.typography.bodyMedium)
-        OutlinedTextField(
-            value = note,
-            onValueChange = { note = it.take(2000) },
-            enabled = enabled,
-            label = { Text(stringResource(R.string.re_note)) },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-        )
-        FilledTonalButton(onClick = { onSave(note) }, enabled = enabled && canSave, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text(stringResource(R.string.re_save_preset))
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ImageLibraryPanel(
     images: List<SavedImage>,
     error: String,
     enabled: Boolean,
-    onAdd: (android.net.Uri) -> Unit,
     onOpen: (SavedImage) -> Unit,
     onFavorite: (SavedImage) -> Unit,
     onRemove: (SavedImage) -> Unit,
-    onImport: (android.net.Uri) -> Unit,
-    onExport: (android.net.Uri) -> Unit,
+    onImport: (Uri) -> Unit,
+    onExport: (Uri) -> Unit,
 ) {
-    val add = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(onAdd) }
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(onImport) }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { it?.let(onExport) }
+    var menu by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<SavedImage?>(null) }
-    Text(stringResource(R.string.re_library_title), style = MaterialTheme.typography.headlineSmall)
-    Text(stringResource(R.string.re_library_body), style = MaterialTheme.typography.bodyLarge)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { add.launch(arrayOf("*/*")) }, enabled = enabled, modifier = Modifier.heightIn(min = 52.dp)) {
-            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-            Text(stringResource(R.string.re_add_image))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.rx_your_images), style = MaterialTheme.typography.headlineMedium)
+            Text(pluralStringResource(R.plurals.rx_image_count, images.size, images.size), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        OutlinedButton(onClick = { importPicker.launch(arrayOf("text/*", "application/octet-stream")) }) { Text(stringResource(R.string.re_import)) }
-        OutlinedButton(onClick = { exportPicker.launch("dsu-image-presets.txt") }, enabled = images.isNotEmpty()) { Text(stringResource(R.string.re_export)) }
+        Box {
+            IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.rx_library_actions)) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.re_import)) }, leadingIcon = { Icon(Icons.Outlined.Download, null) }, onClick = { menu = false; importPicker.launch(arrayOf("text/*", "application/octet-stream")) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.re_export)) }, leadingIcon = { Icon(Icons.Outlined.Upload, null) }, enabled = images.isNotEmpty(), onClick = { menu = false; exportPicker.launch("dsu-image-presets.txt") })
+            }
+        }
     }
-    if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-    if (images.isEmpty()) CardBox { Text(stringResource(R.string.re_library_empty), style = MaterialTheme.typography.titleLarge) }
+    if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+    if (images.isEmpty()) {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.FolderOpen, null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.re_library_empty), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.rx_library_empty_body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
     images.sortedByDescending { it.favorite }.forEach { image ->
-        CardBox {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(image.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                IconButton(onClick = { onFavorite(image) }) {
-                    Icon(
-                        if (image.favorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
-                        contentDescription = stringResource(if (image.favorite) R.string.re_unfavorite else R.string.re_favorite),
-                    )
+        var itemMenu by remember(image.uri) { mutableStateOf(false) }
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.clickable(enabled = enabled) { onOpen(image) }.padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
+                        Icon(Icons.Outlined.InstallMobile, null, modifier = Modifier.padding(12.dp).size(24.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text(image.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(R.string.re_saved_options, image.userdataGiB, backendLabel(image.backend)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Box {
+                        IconButton(onClick = { itemMenu = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.rx_image_actions)) }
+                        DropdownMenu(itemMenu, { itemMenu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.re_remove_image)) }, leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) }, onClick = { itemMenu = false; removing = image })
+                        }
+                    }
                 }
-                IconButton(onClick = { removing = image }) {
-                    Icon(Icons.Outlined.MoreHoriz, contentDescription = stringResource(R.string.re_remove_image))
+                if (image.note.isNotEmpty()) Text(image.note, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 60.dp, end = 12.dp, top = 8.dp))
+                Row(Modifier.padding(start = 60.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (image.sha256.isNotEmpty()) stringResource(R.string.rx_hash_saved) else "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { onFavorite(image) }) {
+                        Icon(if (image.favorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder, stringResource(if (image.favorite) R.string.re_unfavorite else R.string.re_favorite), tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
-            Text(stringResource(R.string.re_saved_options, image.userdataGiB, backendLabel(image.backend)), style = MaterialTheme.typography.bodyMedium)
-            if (image.note.isNotEmpty()) Text(image.note, modifier = Modifier.padding(top = 8.dp))
-            if (image.sha256.isNotEmpty()) Text("SHA-256: ${image.sha256}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-            FilledTonalButton(onClick = { onOpen(image) }, enabled = enabled, modifier = Modifier.padding(top = 12.dp)) { Text(stringResource(R.string.re_open_image)) }
         }
     }
-    Text(stringResource(R.string.re_library_transfer), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     removing?.let { image ->
-        AlertDialog(
-            onDismissRequest = { removing = null },
-            title = { Text(stringResource(R.string.re_remove_image)) },
-            text = { Text(stringResource(R.string.re_remove_body)) },
-            confirmButton = { TextButton(onClick = { onRemove(image); removing = null }) { Text(stringResource(R.string.re_remove_image)) } },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.cancel)) } },
+        AlertDialog(onDismissRequest = { removing = null }, title = { Text(stringResource(R.string.re_remove_image)) }, text = { Text(stringResource(R.string.re_remove_body)) }, confirmButton = { TextButton(onClick = { onRemove(image); removing = null }) { Text(stringResource(R.string.re_remove_image)) } }, dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.cancel)) } })
+    }
+}
+
+@Composable
+fun DashboardTool(icon: ImageVector, title: String, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        androidx.compose.material3.ListItem(
+            modifier = Modifier.clickable(enabled = enabled, onClick = onClick).padding(vertical = 4.dp),
+            headlineContent = { Text(title) },
+            supportingContent = { Text(description) },
+            leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
+            trailingContent = { Icon(Icons.Outlined.ArrowForward, null) },
+            colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         )
     }
 }

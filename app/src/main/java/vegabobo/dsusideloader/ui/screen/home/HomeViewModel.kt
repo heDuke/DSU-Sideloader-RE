@@ -52,6 +52,7 @@ import vegabobo.dsusideloader.loader.InstallerBackend
 import vegabobo.dsusideloader.loader.LibraryCatalog
 import vegabobo.dsusideloader.loader.LoaderEnvironment
 import vegabobo.dsusideloader.loader.SavedImage
+import vegabobo.dsusideloader.loader.SourceSelectionGate
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
 import vegabobo.dsusideloader.preferences.AppPrefs
@@ -77,7 +78,7 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
     private val libraryMutex = Mutex()
-    private var sourceGeneration = 0L
+    private val sourceSelections = SourceSelectionGate()
 
     var checkDynamicPartitions = true
     var checkUnavaiableStorage = true
@@ -339,7 +340,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onClickInstall() {
-        if (taskGate.isBusy()) return
+        if (taskGate.isBusy() || uiState.value.sourceLoading) return
         try {
             session.userSelection.setUserDataSize(uiState.value.userDataCard.text)
             session.userSelection.setImageSize(uiState.value.imageSizeCard.text)
@@ -367,6 +368,7 @@ class HomeViewModel @Inject constructor(
 
     /** Starts a new task, or returns null if one is still running/cleaning up. */
     private fun beginTask(): Long? {
+        if (_uiState.value.sourceLoading) return null
         // Each task gets its own workspace directory (TaskWorkspaces), so the cleanup of one
         // task can never delete files of another.
         val id = taskGate.begin { TaskWorkspaces.taskKey(it, System.currentTimeMillis()) }
@@ -386,6 +388,9 @@ class HomeViewModel @Inject constructor(
     fun onConfirmInstallationSheet() {
         dismissSheet()
         val id = beginTask() ?: return
+        // A new preparation attempt invalidates any earlier prepared input, even if this
+        // attempt fails during preferences, inspection or hash verification.
+        session.dsuInstallation = DSUInstallationSource()
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
         val job = taskGate.jobOf(id) ?: return
         val taskKey = taskGate.workspaceOf(id) ?: return
@@ -497,6 +502,7 @@ class HomeViewModel @Inject constructor(
 
     /** [inStep]: called from the task's preparation step (see onPreparationStepUnsettled). */
     private fun startInstallation(id: Long, inStep: Boolean = false) {
+        check(session.dsuInstallation.uri.toString().isNotEmpty()) { "Image preparation has not completed" }
         Log.d(tag, "startInstallation(task $id), session: \n$session")
         ifAccepts(id) { updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) } }
 
@@ -894,6 +900,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onClickRetryInstallation() {
+        // A preparation/hash failure has no prepared input. Retry the preparation step,
+        // rather than submitting an empty source or bypassing its integrity check.
+        if (session.dsuInstallation.uri.toString().isEmpty()) {
+            if (!taskGate.isBusy()) onConfirmInstallationSheet()
+            return
+        }
         retryEntry.retry()
     }
 
@@ -1046,7 +1058,8 @@ class HomeViewModel @Inject constructor(
         session.installPlan = null
         session.dsuInstallation = DSUInstallationSource()
         updateInstallationCard { it.copy(installationStep = InstallationStep.NOT_INSTALLING, isInstallable = false, isTextFieldEnabled = false, text = "", errorText = "", isError = false) }
-        val generation = ++sourceGeneration
+        val generation = sourceSelections.begin()
+        _uiState.update { it.copy(sourceLoading = true, sourceRequestId = generation) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val filename = FilenameUtils.queryName(application.contentResolver, uri)
@@ -1058,7 +1071,7 @@ class HomeViewModel @Inject constructor(
                 // in this session. Opening a saved entry always rechecks the provider.
                 runCatching { application.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 withContext(Dispatchers.Main.immediate) {
-                    if (generation != sourceGeneration || taskGate.isBusy()) return@withContext
+                    if (taskGate.isBusy() || !sourceSelections.finish(generation)) return@withContext
                     session.userSelection.selectedFileName = filename
                     session.userSelection.selectedFileUri = uri
                     session.installPlan = null
@@ -1066,6 +1079,7 @@ class HomeViewModel @Inject constructor(
                     session.preferences.backend = saved?.backend ?: uiState.value.backend
                     _uiState.update {
                         it.copy(
+                            sourceLoading = false,
                             expectedSha256 = saved?.sha256 ?: "",
                             backend = session.preferences.backend,
                             imageSizeCard = ImageSizeCardState(),
@@ -1085,7 +1099,8 @@ class HomeViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 withContext(Dispatchers.Main.immediate) {
-                    if (generation == sourceGeneration && !taskGate.isBusy()) {
+                    if (!taskGate.isBusy() && sourceSelections.finish(generation)) {
+                        _uiState.update { it.copy(sourceLoading = false) }
                         updateInstallationCard { it.copy(installationStep = InstallationStep.NOT_INSTALLING, isInstallable = false, isTextFieldEnabled = true, isError = true, errorText = e.message ?: e.toString()) }
                     }
                 }
@@ -1105,6 +1120,12 @@ class HomeViewModel @Inject constructor(
                 _uiState.update { it.copy(libraryError = e.message ?: e.toString()) }
             }
         }
+    }
+
+    fun cancelSourceSelection(requestId: Long) {
+        if (taskGate.isBusy() || !sourceSelections.finish(requestId)) return
+        _uiState.update { it.copy(sourceLoading = false) }
+        updateInstallationCard { it.copy(isTextFieldEnabled = true) }
     }
 
     private fun mutateLibrary(transform: (List<SavedImage>) -> List<SavedImage>) {

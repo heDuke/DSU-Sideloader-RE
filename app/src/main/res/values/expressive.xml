@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- New Expressive copy: English and Simplified Chinese; translations pending. -->
+    <string name="rx_install" tools:ignore="MissingTranslation">Install</string>
+    <string name="rx_your_images" tools:ignore="MissingTranslation">Your images</string>
+    <string name="rx_library_actions" tools:ignore="MissingTranslation">Image library actions</string>
+    <string name="rx_image_actions" tools:ignore="MissingTranslation">Image actions</string>
+    <string name="rx_library_empty_body" tools:ignore="MissingTranslation">Add a local image, then save its installation settings here.</string>
+    <string name="rx_hash_saved" tools:ignore="MissingTranslation">SHA-256 saved</string>
+    <string name="rx_install_title" tools:ignore="MissingTranslation">Install a new system</string>
+    <string name="rx_local_source" tools:ignore="MissingTranslation">LOCAL IMAGE</string>
+    <string name="rx_selected_source" tools:ignore="MissingTranslation">SELECTED IMAGE</string>
+    <string name="rx_source_title" tools:ignore="MissingTranslation">Choose your next Android</string>
+    <string name="rx_source_formats" tools:ignore="MissingTranslation">IMG · GZIP · XZ · ZIP</string>
+    <string name="rx_change_source" tools:ignore="MissingTranslation">Tap to choose a different file</string>
+    <string name="rx_install_options" tools:ignore="MissingTranslation">Installation settings</string>
+    <string name="rx_not_set" tools:ignore="MissingTranslation">Optional · not set</string>
+    <string name="rx_hash_set" tools:ignore="MissingTranslation">SHA-256 verification enabled</string>
+    <string name="rx_advanced" tools:ignore="MissingTranslation">Advanced</string>
+    <string name="rx_advanced_summary" tools:ignore="MissingTranslation">Image size override</string>
+    <string name="rx_userdata_help" tools:ignore="MissingTranslation">Space for apps and data in the new system. Choose a size in GiB.</string>
+    <string name="rx_capacity_unit" tools:ignore="MissingTranslation">GiB of userdata</string>
+    <string name="rx_custom_capacity" tools:ignore="MissingTranslation">Custom capacity (GiB)</string>
+    <string name="rx_root_requirement" tools:ignore="MissingTranslation">Requires root and Android 11 or later</string>
+    <string name="rx_save" tools:ignore="MissingTranslation">Save preset</string>
+    <string name="rx_done" tools:ignore="MissingTranslation">Done</string>
+    <string name="rx_review_plan" tools:ignore="MissingTranslation">Review installation plan</string>
+    <string name="rx_select_image" tools:ignore="MissingTranslation">Choose an image</string>
+    <plurals name="rx_image_count" tools:ignore="MissingTranslation">
+        <item quantity="one">%d saved image</item>
+        <item quantity="other">%d saved images</item>
+    </plurals>
+    <string name="rx_log_summary" tools:ignore="MissingTranslation">View or export this session’s installation logs</string>
+    <string name="rx_adb_commands" tools:ignore="MissingTranslation">ADB commands</string>
+    <string name="rx_adb_summary" tools:ignore="MissingTranslation">Inspect the prepared installation commands</string>
+    <string name="rx_dsu_docs" tools:ignore="MissingTranslation">Android system documentation</string>
+    <string name="rx_learn_dsu" tools:ignore="MissingTranslation">About Dynamic System Updates</string>
+    <string name="rx_learn_summary" tools:ignore="MissingTranslation">Requirements and how DSU works</string>
+</resources>

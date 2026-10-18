@@ -23,6 +23,29 @@ import vegabobo.dsusideloader.util.OperationMode
  * Framework boundaries are substituted; NOT an Android ViewModel/lifecycle/Binder test.
  */
 class RetryWiringTest {
+    @Test fun retryWithoutPreparedSourceRepeatsPreparationRatherThanSubmitting() {
+        val h = HomeWiringHarness()
+        val service = Service()
+        PrivilegedProvider.connection.SERVICE = service
+        h.session.dsuInstallation = vegabobo.dsusideloader.model.DSUInstallationSource(uri = "")
+        val calls = AtomicInteger()
+        vegabobo.dsusideloader.preparation.Preparation.beforePrepared = {
+            calls.incrementAndGet()
+            throw java.io.IOException("SHA-256 mismatch")
+        }
+        try {
+            h.onClickRetryInstallation()
+            assertCanStartNext(h, InstallationStep.ERROR)
+            assertEquals(1, calls.get())
+            assertTrue(h.cardError(), h.cardError().contains("SHA-256 mismatch"))
+            assertTrue("no request before successful preparation", service.calls.isEmpty())
+            assertNoUncaught(h)
+        } finally {
+            vegabobo.dsusideloader.preparation.Preparation.beforePrepared = {}
+            PrivilegedProvider.connection.SERVICE = null
+            h.stopHarness()
+        }
+    }
     private fun assertNoUncaught(h: HomeWiringHarness) {
         Thread.sleep(50)
         assertTrue("no unhandled coroutine exception: ${h.uncaught}", h.uncaught.isEmpty())

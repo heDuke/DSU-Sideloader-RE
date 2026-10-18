@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- New Expressive copy: English and Simplified Chinese; translations pending. -->
+    <string name="rx_install" tools:ignore="MissingTranslation">安装</string>
+    <string name="rx_your_images" tools:ignore="MissingTranslation">我的镜像</string>
+    <string name="rx_library_actions" tools:ignore="MissingTranslation">镜像库操作</string>
+    <string name="rx_image_actions" tools:ignore="MissingTranslation">镜像操作</string>
+    <string name="rx_library_empty_body" tools:ignore="MissingTranslation">添加本地镜像，并在这里保存它的安装预设。</string>
+    <string name="rx_hash_saved" tools:ignore="MissingTranslation">已保存 SHA-256</string>
+    <string name="rx_install_title" tools:ignore="MissingTranslation">安装新系统</string>
+    <string name="rx_local_source" tools:ignore="MissingTranslation">本地镜像</string>
+    <string name="rx_selected_source" tools:ignore="MissingTranslation">已选镜像</string>
+    <string name="rx_source_title" tools:ignore="MissingTranslation">选择 Android 镜像</string>
+    <string name="rx_source_formats" tools:ignore="MissingTranslation">IMG · GZIP · XZ · ZIP</string>
+    <string name="rx_change_source" tools:ignore="MissingTranslation">点按可更换文件</string>
+    <string name="rx_install_options" tools:ignore="MissingTranslation">安装设置</string>
+    <string name="rx_not_set" tools:ignore="MissingTranslation">可选 · 未设置</string>
+    <string name="rx_hash_set" tools:ignore="MissingTranslation">已启用 SHA-256 校验</string>
+    <string name="rx_advanced" tools:ignore="MissingTranslation">高级选项</string>
+    <string name="rx_advanced_summary" tools:ignore="MissingTranslation">手动指定镜像大小</string>
+    <string name="rx_userdata_help" tools:ignore="MissingTranslation">新系统中用于应用和数据的空间，容量单位为 GiB。</string>
+    <string name="rx_capacity_unit" tools:ignore="MissingTranslation">GiB 用户数据空间</string>
+    <string name="rx_custom_capacity" tools:ignore="MissingTranslation">自定义容量（GiB）</string>
+    <string name="rx_root_requirement" tools:ignore="MissingTranslation">需要 Root 和 Android 11 以上</string>
+    <string name="rx_save" tools:ignore="MissingTranslation">保存预设</string>
+    <string name="rx_done" tools:ignore="MissingTranslation">完成</string>
+    <string name="rx_review_plan" tools:ignore="MissingTranslation">查看安装方案</string>
+    <string name="rx_select_image" tools:ignore="MissingTranslation">选择镜像</string>
+    <plurals name="rx_image_count" tools:ignore="MissingTranslation">
+        <item quantity="other">已保存 %d 个镜像</item>
+    </plurals>
+    <string name="rx_log_summary" tools:ignore="MissingTranslation">查看或导出本次会话的安装日志</string>
+    <string name="rx_adb_commands" tools:ignore="MissingTranslation">ADB 命令</string>
+    <string name="rx_adb_summary" tools:ignore="MissingTranslation">查看已准备的安装命令</string>
+    <string name="rx_dsu_docs" tools:ignore="MissingTranslation">Android 系统官方文档</string>
+    <string name="rx_learn_dsu" tools:ignore="MissingTranslation">了解动态系统更新</string>
+    <string name="rx_learn_summary" tools:ignore="MissingTranslation">使用条件与 DSU 的工作方式</string>
+</resources>

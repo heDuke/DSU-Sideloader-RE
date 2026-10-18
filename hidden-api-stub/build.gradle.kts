@@ -1,11 +1,11 @@
 plugins {
-    id("com.android.library")
-    id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
     namespace = "vegabobo.dsusideloader"
-    compileSdk = 33
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 29
@@ -16,6 +16,6 @@ android {
 }
 
 dependencies {
-    implementation("dev.rikka.shizuku:api:_")
-    implementation("dev.rikka.shizuku:provider:_")
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 }

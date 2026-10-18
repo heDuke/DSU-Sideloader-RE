@@ -56,4 +56,6 @@
     <string name="re_status_ready" tools:ignore="MissingTranslation">可以开始准备</string>
     <string name="re_status_task" tools:ignore="MissingTranslation">安装状态</string>
     <string name="re_no_device_validation" tools:ignore="MissingTranslation">尚待设备验证</string>
+    <string name="re_reading_source" tools:ignore="MissingTranslation">正在读取镜像信息…</string>
+    <string name="re_verifying_hash" tools:ignore="MissingTranslation">正在校验 SHA-256 并复制镜像…</string>
 </resources>

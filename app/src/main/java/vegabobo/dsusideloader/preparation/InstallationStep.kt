@@ -14,6 +14,7 @@ enum class InstallationStep {
     DECOMPRESSING_XZ,
     COMPRESSING_TO_GZ,
     VERIFYING_IMAGE_SIZE,
+    VERIFYING_IMAGE_INTEGRITY,
     EXTRACTING_FILE,
 
     // Installation Steps

@@ -1,10 +1,11 @@
 package vegabobo.dsusideloader.model
-class DSUInstallationSource(var uri: String = "content://review/system.gz", var fileSize: Long = 32L)
+class DSUInstallationSource(var uri: String = "", var fileSize: Long = 32L)
 class Session {
     var installPlan: vegabobo.dsusideloader.loader.InstallPlan? = null
     val preferences = InstallationPreferences()
     val userSelection = Selection()
-    var dsuInstallation = DSUInstallationSource()
+    // Harnesses start with a valid prepared source unless the probe explicitly clears it.
+    var dsuInstallation = DSUInstallationSource(uri = "content://review/system.gz")
     var mode = vegabobo.dsusideloader.util.OperationMode.SHIZUKU
     var installationScriptPath = ""
     fun getOperationMode() = mode

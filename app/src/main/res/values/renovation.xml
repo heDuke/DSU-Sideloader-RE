@@ -56,4 +56,6 @@
     <string name="re_status_ready" tools:ignore="MissingTranslation">Ready to prepare</string>
     <string name="re_status_task" tools:ignore="MissingTranslation">Installation status</string>
     <string name="re_no_device_validation" tools:ignore="MissingTranslation">Device validation pending</string>
+    <string name="re_reading_source" tools:ignore="MissingTranslation">Reading image information…</string>
+    <string name="re_verifying_hash" tools:ignore="MissingTranslation">Verifying SHA-256 and copying the image…</string>
 </resources>

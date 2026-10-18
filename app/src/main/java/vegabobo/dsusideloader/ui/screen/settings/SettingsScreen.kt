@@ -2,15 +2,19 @@ package vegabobo.dsusideloader.ui.screen.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,7 +34,7 @@ import vegabobo.dsusideloader.ui.screen.Destinations
 import vegabobo.dsusideloader.util.OperationMode
 import vegabobo.dsusideloader.util.collectAsStateWithLifecycle
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun Settings(
     navigate: (String) -> Unit,
@@ -52,14 +56,15 @@ fun Settings(
         },
     ) {
         CardBox(modifier = Modifier.padding(horizontal = 16.dp), cardTitle = stringResource(R.string.re_appearance)) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("system" to R.string.re_theme_system, "light" to R.string.re_theme_light, "dark" to R.string.re_theme_dark).forEach { (mode, label) ->
-                    FilterChip(
-                        selected = uiState.themeMode == mode,
-                        onClick = { settingsViewModel.setThemeMode(mode) },
-                        label = { Text(stringResource(label)) },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                listOf("system" to R.string.re_theme_system, "light" to R.string.re_theme_light, "dark" to R.string.re_theme_dark).forEachIndexed { index, (mode, label) ->
+                    ToggleButton(
+                        checked = uiState.themeMode == mode,
+                        onCheckedChange = { settingsViewModel.setThemeMode(mode) },
+                        shapes = when (index) { 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes(); 2 -> ButtonGroupDefaults.connectedTrailingButtonShapes(); else -> ButtonGroupDefaults.connectedMiddleButtonShapes() },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
+                    ) { Text(stringResource(label)) }
                 }
             }
             PreferenceItem(

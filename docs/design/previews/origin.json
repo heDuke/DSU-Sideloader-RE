@@ -1,0 +1,9 @@
+{
+  "source_head_at_render": "be26e597c7d79acb5b564fb9a20c0d0bd6f0043c",
+  "dirty": true,
+  "app_main_sha256": "7f20fa07b7c5eee90555df0270908c96c8a2fc6ab155803518a0aa0ee83b3153",
+  "render_copy_byte_matches_checkout": true,
+  "renderer": "Paparazzi 1.3.5 / layoutlib, not an Android device",
+  "cases": "empty/selected installation and library, 4 configurations, 12 images",
+  "wide": "2560x1800px, orientation LANDSCAPE (930x654dp)"
+}

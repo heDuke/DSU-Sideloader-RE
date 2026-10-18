@@ -12,6 +12,20 @@ data class SavedImage(
     val note: String = "",
 )
 
+/** A document provider may return after another selection or its cancel button. */
+class SourceSelectionGate {
+    private var sequence = 0L
+    private var active: Long? = null
+
+    @Synchronized fun begin(): Long = (++sequence).also { active = it }
+
+    @Synchronized fun finish(id: Long): Boolean {
+        if (active != id) return false
+        active = null
+        return true
+    }
+}
+
 /** Versioned metadata only: no file contents, grants, shell commands or credentials. */
 object LibraryCatalog {
     const val LIMIT = 50
