@@ -1,0 +1,62 @@
+JUnit version 4.13.2
+.PROBE late DSU submission: [forceStop, cancel-finished, unmount, forceStop, startActivity-after-cancel=true]
+E.PROBE reboot plus observed active install: Remount(reason=device rebooted since unmount)
+E.PROBE unknown mounted state: remaining=[] record=null
+E.PROBE cancel at initial preferences: terminal=false busy=true
+E
+Time: 0.153
+There were 4 failures:
+1) dsuAppRequestMustNotSubmitAfterCancellationHasFinished(review2.ReReviewRegressionTest)
+java.lang.AssertionError: Actual handler must not open the DSU prompt after its task was cancelled
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertFalse(Assert.java:65)
+	at review2.ReReviewRegressionTest$dsuAppRequestMustNotSubmitAfterCancellationHasFinished$1.invokeSuspend(ReReviewRegressionTest.kt:110)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:106)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:284)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:59)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:38)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at review2.ReReviewRegressionTest.dsuAppRequestMustNotSubmitAfterCancellationHasFinished(ReReviewRegressionTest.kt:68)
+2) observedInstallingStateMustBlockRemountEvenAfterBootCountChanges(review2.ReReviewRegressionTest)
+java.lang.AssertionError: A changed boot counter must not override known current installation activity
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at review2.ReReviewRegressionTest.observedInstallingStateMustBlockRemountEvenAfterBootCountChanges(ReReviewRegressionTest.kt:25)
+3) unknownMountStateMustNotDiscardPendingRecord(review2.ReReviewRegressionTest)
+java.lang.AssertionError: Unknown mount completion must retain pending recovery responsibility
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertNotNull(Assert.java:713)
+	at review2.ReReviewRegressionTest$unknownMountStateMustNotDiscardPendingRecord$1.invokeSuspend(ReReviewRegressionTest.kt:38)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:106)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:284)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:59)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:38)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at review2.ReReviewRegressionTest.unknownMountStateMustNotDiscardPendingRecord(ReReviewRegressionTest.kt:28)
+4) cancellationDuringInitialPreferenceReadMustReleaseGate(review2.ReReviewRegressionTest)
+java.lang.AssertionError: Cancelled preparation must reach a terminal outcome and release the gate
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertFalse(Assert.java:65)
+	at review2.ReReviewRegressionTest$cancellationDuringInitialPreferenceReadMustReleaseGate$1.invokeSuspend(ReReviewRegressionTest.kt:65)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:106)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:284)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:59)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:38)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at review2.ReReviewRegressionTest.cancellationDuringInitialPreferenceReadMustReleaseGate(ReReviewRegressionTest.kt:41)
+
+FAILURES!!!
+Tests run: 4,  Failures: 4
+
