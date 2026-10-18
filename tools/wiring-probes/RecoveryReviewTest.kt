@@ -83,10 +83,10 @@ class RecoveryReviewTest {
             assertEquals(0, s.calls.count { it == "mount" })
             assertNotNull(h.pendingRecord())
             // Normal click on the new ended-task card: no current task exists to finish.
-            h.onInstallationCardAction(InstallationCardAction.ACK_UNCONFIRMED)
+            h.installationCardActionHandler(h.card())(InstallationCardAction.ACK_UNCONFIRMED)
             awaitCard(h, InstallationStep.STORAGE_RESTORE_PENDING, true)
             assertEquals(0, s.calls.count { it == "mount" })
-            h.onInstallationCardAction(InstallationCardAction.RESTORE_STORAGE)
+            h.installationCardActionHandler(h.card())(InstallationCardAction.RESTORE_STORAGE)
             withTimeout(5000) { while (h.pendingRecord() != null || h.card().storageRestorePending) delay(2) }
             assertEquals(1, s.calls.count { it == "mount" })
             assertNotNull(h.newTask())
@@ -149,12 +149,12 @@ class RecoveryReviewTest {
         PrivilegedProvider.connection.SERVICE = s
         try {
             first(h); failedRetry(h); s.progressStatus = 1
-            h.onInstallationCardAction(InstallationCardAction.RESTORE_STORAGE)
+            h.installationCardActionHandler(h.card())(InstallationCardAction.RESTORE_STORAGE)
             withTimeout(5000) { while (!h.card().storageRestoreBlocked) delay(2) }
             assertEquals(0, s.calls.count { it == "mount" })
             assertNotNull(h.pendingRecord())
             s.progressStatus = 0
-            h.onInstallationCardAction(InstallationCardAction.RESTORE_STORAGE)
+            h.installationCardActionHandler(h.card())(InstallationCardAction.RESTORE_STORAGE)
             withTimeout(5000) { while (h.pendingRecord() != null || h.card().storageRestorePending) delay(2) }
             assertEquals(1, s.calls.count { it == "mount" })
             checkErrors(h)

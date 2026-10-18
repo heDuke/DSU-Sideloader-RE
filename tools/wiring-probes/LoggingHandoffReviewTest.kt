@@ -41,7 +41,7 @@ class LoggingHandoffReviewTest {
             withTimeout(3000) { h.retryJob(previous).join(); h.submissionJob().join() }
             h.onClickCancelInstallationButton()
             withTimeout(5000) { while (h.busy() || h.cardStep() != InstallationStep.CANCEL_REQUESTED_CLEANUP_UNVERIFIED) delay(2) }
-            h.onInstallationCardAction(InstallationCardAction.ACK_CLEANUP_INCOMPLETE)
+            h.installationCardActionHandler(h.card())(InstallationCardAction.ACK_CLEANUP_INCOMPLETE)
             withTimeout(3000) { while (h.cardStep() != InstallationStep.NOT_INSTALLING) delay(2) }
             calls.clear()
 

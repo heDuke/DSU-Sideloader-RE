@@ -8,7 +8,7 @@ here = Path(__file__).resolve().parent
 source = (repo / 'app/src/main/java/vegabobo/dsusideloader/ui/screen/home/HomeViewModel.kt').read_text()
 names = [
     # Retry entries (fix/retry-entry-guard): currentOrNewTask moved into RetryEntry (TaskStep.kt).
-    'startLogging', 'refreshStorageRestorePending', 'showStorageRestore', 'querySystemDsuState', 'onRestoreStorage', 'onAcknowledgeUnconfirmed', 'onAcknowledgeCleanupIncomplete', 'onInstallationCardAction', 'resetInstallationCard', 'remountSdCardsIfOwnedBy', 'createRetryEntry', 'onClickRetryInstallation', 'onClickUnmountSdCardAndRetry', 'onClickSetSeLinuxPermissive',
+    'installationCardActionHandler', 'startLogging', 'refreshStorageRestorePending', 'showStorageRestore', 'querySystemDsuState', 'onRestoreStorage', 'onAcknowledgeUnconfirmed', 'onAcknowledgeCleanupIncomplete', 'onInstallationCardAction', 'resetInstallationCard', 'remountSdCardsIfOwnedBy', 'createRetryEntry', 'onClickRetryInstallation', 'onClickUnmountSdCardAndRetry', 'onClickSetSeLinuxPermissive',
     'setupAdbInstallation', 'onConfirmInstallationSheet', 'onPreparationFinished', 'startInstallation', 'beginTask', 'ifAccepts', 'updateInstallationCard',
     'onPreparationStepUnsettled', 'onTaskCancelledWithoutSystemChanges',
     'startPrivilegedInstallation', 'onClickCancelInstallationButton',

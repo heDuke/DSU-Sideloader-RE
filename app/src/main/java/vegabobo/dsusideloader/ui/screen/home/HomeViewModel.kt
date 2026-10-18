@@ -341,7 +341,7 @@ class HomeViewModel @Inject constructor(
             Log.w(tag, "Installation task still running or cleaning up: ${taskGate.current()}")
             return null
         }
-        updateInstallationCard { it.copy(skippedImages = emptyList()) }
+        updateInstallationCard { it.copy(taskId = id, skippedImages = emptyList()) }
         return id
     }
 
@@ -863,10 +863,25 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun onInstallationCardAction(action: InstallationCardAction) {
+    /** Capture the rendered card, so a delayed click cannot act on a later task/card. */
+    fun installationCardActionHandler(card: InstallationCardState): (InstallationCardAction) -> Unit {
+        return { action ->
+            val displayed = _uiState.value.installationCard
+            val active = taskGate.current()
+            if (displayed.taskId != card.taskId || displayed.installationStep != card.installationStep ||
+                (active != null && (active.id != card.taskId || active.cancelling))
+            ) {
+                Log.d(tag, "Ignoring action $action from a stale installation card")
+            } else {
+                onInstallationCardAction(action, card.taskId)
+            }
+        }
+    }
+
+    private fun onInstallationCardAction(action: InstallationCardAction, ownerTaskId: Long?) {
         when (action) {
             InstallationCardAction.ACK_CLEANUP_INCOMPLETE -> onAcknowledgeCleanupIncomplete()
-            InstallationCardAction.ACK_UNCONFIRMED -> onAcknowledgeUnconfirmed()
+            InstallationCardAction.ACK_UNCONFIRMED -> onAcknowledgeUnconfirmed(ownerTaskId)
             InstallationCardAction.RESTORE_STORAGE -> onRestoreStorage()
             InstallationCardAction.RESTORE_STORAGE_LATER ->
                 updateInstallationCard { it.copy(installationStep = InstallationStep.NOT_INSTALLING) }
@@ -877,9 +892,15 @@ class HomeViewModel @Inject constructor(
      * The user states the system DSU flow was finished or cancelled; ends our task.
      * This does not remount: the pending record stays and the restore prompt is shown.
      */
-    private fun onAcknowledgeUnconfirmed() {
+    private fun onAcknowledgeUnconfirmed(ownerTaskId: Long?) {
+        if (taskGate.isBusy()) {
+            if (ownerTaskId == null || taskGate.phaseOf(ownerTaskId) != InstallTaskGate.Phase.DSU_APP ||
+                !taskGate.finishIfNotCancelling(ownerTaskId)
+            ) {
+                return
+            }
+        }
         taskThatUnmounted = null
-        taskGate.current()?.let { taskGate.finish(it.id) }
         resetInstallationCard()
     }
 

@@ -4,8 +4,8 @@ on:
   push:
     branches: [ "master" ]
   pull_request:
-    # fix/p0-installer-correctness: base of the stacked PR #3.
-    branches: [ "master", "fix/p0-installer-correctness" ]
+    # Base branches of the stacked installer and device-validation PRs.
+    branches: [ "master", "fix/p0-installer-correctness", "fix/retry-entry-guard" ]
 
 jobs:
   build:

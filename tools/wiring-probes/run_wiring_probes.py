@@ -61,7 +61,7 @@ def main():
             "ui/screen/home/HomeUiState.kt", "core/TaskWorkspaces.kt",
         ]]
         kotlin += list((source / "app/src/test").rglob("*.kt"))
-        kotlin += sorted((here / "stubs").glob("*.kt")) + [here / "HomeWiringHarness.kt", here / "FourthReviewWiringTest.kt", here / "FifthReviewWiringTest.kt", here / "RetryWiringTest.kt", here / "RetryHistoryReviewTest.kt", here / "RetryHandoffWiringTest.kt", here / "RecoveryReviewTest.kt", here / "LoggingHandoffReviewTest.kt", here / "LoggingHandoffWiringTest.kt"]
+        kotlin += sorted((here / "stubs").glob("*.kt")) + [here / "HomeWiringHarness.kt", here / "FourthReviewWiringTest.kt", here / "FifthReviewWiringTest.kt", here / "RetryWiringTest.kt", here / "RetryHistoryReviewTest.kt", here / "RetryHandoffWiringTest.kt", here / "RecoveryReviewTest.kt", here / "LoggingHandoffReviewTest.kt", here / "LoggingHandoffWiringTest.kt", here / "CardOwnershipWiringTest.kt"]
         subprocess.run(["java", "-cp", cp, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", cp, "-d", str(classes)] + list(map(str, kotlin)), check=True)
         runner = ["java", "-cp", cp, "org.junit.runner.JUnitCore"]
         baseline = subprocess.run(runner + [
@@ -90,8 +90,9 @@ def main():
         recovery = subprocess.run(runner + ["review3.RecoveryReviewTest"])
         logging = subprocess.run(runner + ["review3.LoggingHandoffReviewTest"])
         logging_full = subprocess.run(runner + ["review3.LoggingHandoffWiringTest"])
+        ownership = subprocess.run(runner + ["review3.CardOwnershipWiringTest"])
         print("Expected: all project tests, TR1/TR2, FR1, 4 fifth-review terminal probes and the retry-entry probes passing. These run verbatim ViewModel method fragments with substituted framework boundaries, NOT an Android ViewModel/lifecycle/Binder integration test.", flush=True)
-        return baseline.returncode or regressions.returncode or exceptional.returncode or extra.returncode or retry.returncode or history.returncode or handoff.returncode or recovery.returncode or logging.returncode or logging_full.returncode
+        return baseline.returncode or regressions.returncode or exceptional.returncode or extra.returncode or retry.returncode or history.returncode or handoff.returncode or recovery.returncode or logging.returncode or logging_full.returncode or ownership.returncode
 
 if __name__ == "__main__":
     raise SystemExit(main())
