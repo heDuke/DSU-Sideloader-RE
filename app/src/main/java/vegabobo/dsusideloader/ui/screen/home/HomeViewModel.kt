@@ -70,7 +70,7 @@ class HomeViewModel @Inject constructor(
     var installationJob: Job = Job()
     var logger: LogcatDiagnostic? = null
     private val sdCardRemounter =
-        SdCardRemounter(DataStorePendingRemountStore(dataStore)) { Log.d("SdCardRemounter", it) }
+        SdCardRemounter(DataStorePendingRemountStore(dataStore), log = { Log.d("SdCardRemounter", it) })
 
     /** Task that unmounted SD volumes; only its confirmed terminal outcome may remount them. */
     @Volatile
@@ -193,7 +193,9 @@ class HomeViewModel @Inject constructor(
             }
             val failed = sdCardRemounter.remountPending(asVolumeOps(), "user restore")
             if (failed.isNotEmpty()) {
-                showStorageRestore(true, promptIfIdle = false, error = failed.joinToString())
+                val reasons = sdCardRemounter.failureReasons()
+                val text = failed.joinToString("; ") { v -> reasons[v]?.let { r -> "$v: $r" } ?: v }
+                showStorageRestore(true, promptIfIdle = false, error = text)
                 return@run
             }
             taskThatUnmounted = null

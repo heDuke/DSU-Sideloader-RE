@@ -44,9 +44,11 @@ class SdCardRemounterTest {
         var phase: RemountPhase = RemountPhase.LOCAL_TASK,
         var boot: String? = null,
     ) : PendingRemountStore {
-        override suspend fun read() = if (ids.isEmpty()) null else PendingRemount(ids, phase, boot)
+        var failures: Map<String, String> = emptyMap()
+        override suspend fun read() = if (ids.isEmpty()) null else PendingRemount(ids, phase, boot, failures)
         override suspend fun write(record: PendingRemount?) {
             ids = record?.volumes.orEmpty()
+            failures = record?.failures.orEmpty()
             record?.let { phase = it.phase; boot = it.bootId }
         }
     }
@@ -172,5 +174,72 @@ class SdCardRemounterTest {
         assertEquals(r, PendingSdVolumes.decodeRecord(PendingSdVolumes.encodeRecord(r)))
         assertEquals("", PendingSdVolumes.encodeRecord(null))
         assertEquals(null, PendingSdVolumes.decodeRecord(""))
+    }
+
+    // --- Review R4 follow-up: failure reasons + mounted-state verification ---
+
+    /** Ops that report mount state; [ineffective] volumes stay unmounted after mount(). */
+    private class StatefulOps(
+        val present: List<String>,
+        val failMount: Set<String> = emptySet(),
+        val ineffective: Set<String> = emptySet(),
+    ) : VolumeOps {
+        val state = present.associateWith { false }.toMutableMap()
+        val mountCalls = mutableListOf<String>()
+        override fun volumeIds() = present
+        override fun mount(id: String) {
+            mountCalls += id
+            if (id in failMount) throw IllegalStateException("vold busy")
+            if (id !in ineffective) state[id] = true
+        }
+        override fun unmount(id: String) {
+            state[id] = false
+        }
+        override fun isMounted(id: String) = state[id]
+    }
+
+    @Test
+    fun partialSuccessKeepsOnlyFailedVolumesWithReasons() = kotlinx.coroutines.runBlocking {
+        val store = MemoryStore(listOf("public:1,1", "public:2,1", "public:3,1", "public:4,1"))
+        val ops = StatefulOps(
+            listOf("public:1,1", "public:2,1", "public:3,1"),
+            failMount = setOf("public:2,1"),
+            ineffective = setOf("public:3,1"),
+        )
+        val remounter = SdCardRemounter(store, verifyAttempts = 2, verifyDelayMs = 1)
+        val failed = remounter.remountPending(ops, "test")
+        assertEquals(listOf("public:2,1", "public:3,1"), failed)
+        assertEquals(failed, store.ids) // 1 remounted, 4 gone -> forgotten
+        assertTrue(store.failures["public:2,1"]!!.contains("vold busy"))
+        assertTrue(store.failures["public:3,1"]!!.contains("still not mounted"))
+        assertEquals(store.failures, remounter.failureReasons())
+
+        // Later success clears the record (and the reasons).
+        val ops2 = StatefulOps(listOf("public:2,1", "public:3,1"))
+        assertEquals(emptyList<String>(), remounter.remountPending(ops2, "retry"))
+        assertEquals(emptyList<String>(), store.ids)
+        assertEquals(emptyMap<String, String>(), store.failures)
+    }
+
+    @Test
+    fun alreadyMountedVolumeIsConfirmedWithoutMountCall() = kotlinx.coroutines.runBlocking {
+        val store = MemoryStore(listOf("public:1,1"))
+        val ops = StatefulOps(listOf("public:1,1")).apply { state["public:1,1"] = true }
+        assertEquals(emptyList<String>(), SdCardRemounter(store).remountPending(ops, "test"))
+        assertEquals(emptyList<String>(), ops.mountCalls)
+        assertEquals(emptyList<String>(), store.ids)
+    }
+
+    @Test
+    fun failureReasonsRoundTripInRecord() {
+        val r = PendingRemount(
+            listOf("public:1,1", "public:2,1"),
+            RemountPhase.SYSTEM_UNKNOWN,
+            "3",
+            mapOf("public:2,1" to "vold busy\nline2"),
+        )
+        val back = PendingSdVolumes.decodeRecord(PendingSdVolumes.encodeRecord(r))!!
+        assertEquals(mapOf("public:2,1" to "vold busy line2"), back.failures)
+        assertEquals(r.volumes, back.volumes)
     }
 }

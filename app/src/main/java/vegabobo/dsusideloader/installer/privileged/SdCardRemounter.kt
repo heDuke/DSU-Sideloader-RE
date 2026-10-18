@@ -26,6 +26,9 @@ object PendingSdVolumes {
         sb.append("phase=").append(record.phase.name).append(SEPARATOR)
         record.bootId?.let { sb.append("boot=").append(it).append(SEPARATOR) }
         record.volumes.distinct().forEach { sb.append("vol=").append(it).append(SEPARATOR) }
+        record.failures.filterKeys { it in record.volumes }.forEach { (id, reason) ->
+            sb.append("fail=").append(id).append('\t').append(reason.replace(SEPARATOR, " ")).append(SEPARATOR)
+        }
         return sb.toString()
     }
 
@@ -43,6 +46,7 @@ object PendingSdVolumes {
         var phase = RemountPhase.SYSTEM_UNKNOWN
         var boot: String? = null
         val vols = ArrayList<String>()
+        val failures = LinkedHashMap<String, String>()
         for (line in lines.drop(1)) {
             val key = line.substringBefore('=')
             val v = line.substringAfter('=', "")
@@ -50,9 +54,10 @@ object PendingSdVolumes {
                 "phase" -> phase = RemountPhase.values().firstOrNull { it.name == v } ?: RemountPhase.SYSTEM_UNKNOWN
                 "boot" -> boot = v.ifEmpty { null }
                 "vol" -> if (v.isNotEmpty() && v !in vols) vols += v
+                "fail" -> failures[v.substringBefore('\t')] = v.substringAfter('\t', "")
             }
         }
-        return if (vols.isEmpty()) null else PendingRemount(vols, phase, boot)
+        return if (vols.isEmpty()) null else PendingRemount(vols, phase, boot, failures.filterKeys { it in vols })
     }
 
     /** Public (removable) volumes, e.g. "public:179,1". */
@@ -74,12 +79,19 @@ interface VolumeOps {
     fun volumeIds(): List<String>
     fun mount(id: String)
     fun unmount(id: String)
+
+    /** true/false when the volume state is known, null when it can't be read. */
+    fun isMounted(id: String): Boolean? = null
 }
 
 fun IPrivilegedService.asVolumeOps(): VolumeOps = object : VolumeOps {
     override fun volumeIds(): List<String> = volumes.mapNotNull { it.id }
     override fun mount(id: String) = this@asVolumeOps.mount(id)
     override fun unmount(id: String) = this@asVolumeOps.unmount(id)
+    override fun isMounted(id: String): Boolean? = volumes.firstOrNull { it.id == id }?.let {
+        // VolumeInfo.STATE_MOUNTED (2) / STATE_MOUNTED_READ_ONLY (3)
+        it.state == 2 || it.state == 3
+    }
 }
 
 /**
@@ -101,6 +113,8 @@ data class PendingRemount(
     val phase: RemountPhase,
     /** Settings.Global.BOOT_COUNT when the volumes were unmounted (null if unknown). */
     val bootId: String?,
+    /** Last remount failure per volume (kept until the volume is remounted or gone). */
+    val failures: Map<String, String> = emptyMap(),
 )
 
 /** gsid state as far as it can be queried (needs MANAGE_DYNAMIC_SYSTEM, i.e. root). */
@@ -158,6 +172,8 @@ class DataStorePendingRemountStore(private val dataStore: DataStore<Preferences>
 class SdCardRemounter(
     private val store: PendingRemountStore,
     private val log: (String) -> Unit = {},
+    private val verifyAttempts: Int = 6,
+    private val verifyDelayMs: Long = 500,
 ) {
 
     private val mutex = Mutex()
@@ -218,19 +234,45 @@ class SdCardRemounter(
         }
         val (toMount, gone) = PendingSdVolumes.reconcile(pending, current)
         gone.forEach { log("Volume $it no longer present, forgetting it") }
-        val failed = ArrayList<String>()
+        val failures = LinkedHashMap<String, String>()
         for (id in toMount) {
-            try {
-                ops.mount(id)
+            val error = mountAndVerify(ops, id)
+            if (error == null) {
                 log("Volume remounted ($reason): $id")
-            } catch (e: Exception) {
-                log("Failed to remount $id ($reason), keeping it for retry: $e")
-                failed += id
+            } else {
+                log("Failed to remount $id ($reason), keeping it for retry: $error")
+                failures[id] = error
             }
         }
-        store.write(if (failed.isEmpty()) null else record.copy(volumes = failed))
+        val failed = failures.keys.toList()
+        store.write(if (failed.isEmpty()) null else record.copy(volumes = failed, failures = failures))
         failed
     }
+
+    /** @return null when the volume is (confirmed or assumed) mounted, else the failure reason. */
+    private suspend fun mountAndVerify(ops: VolumeOps, id: String): String? {
+        if (runCatching { ops.isMounted(id) }.getOrNull() == true) return null
+        try {
+            ops.mount(id)
+        } catch (e: Exception) {
+            return e.toString()
+        }
+        repeat(verifyAttempts) { attempt ->
+            when (runCatching { ops.isMounted(id) }.getOrNull()) {
+                true -> return null
+                // State not readable: the mount call succeeded, accept it but note it.
+                null -> {
+                    log("Mounted state of $id can't be verified, trusting mount() result")
+                    return null
+                }
+                false -> if (attempt < verifyAttempts - 1) kotlinx.coroutines.delay(verifyDelayMs)
+            }
+        }
+        return "mount() returned but volume is still not mounted"
+    }
+
+    /** Last failure reasons of the pending volumes (for display). */
+    suspend fun failureReasons(): Map<String, String> = store.read()?.failures.orEmpty()
 
     /**
      * App start: decides with [RemountPolicy] and remounts only when that is safe.
