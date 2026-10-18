@@ -1,0 +1,158 @@
+Testing source revision: 008aec62c343c39e5d350d052e270fd3a7b34dfb
+Extracted production methods: createRetryEntry, onClickRetryInstallation, onClickUnmountSdCardAndRetry, onClickSetSeLinuxPermissive, setupAdbInstallation, onConfirmInstallationSheet, onPreparationFinished, startInstallation, beginTask, ifAccepts, updateInstallationCard, onPreparationStepUnsettled, onTaskCancelledWithoutSystemChanges, startPrivilegedInstallation, onClickCancelInstallationButton, onSubmissionStepUnsettled, cancelDsuAppInstallation, finishCancelWithOutcome, onTaskFailed, onInstallationError
+warning: [options] system modules path not set in conjunction with -source 17
+1 warning
+app/src/test/java/vegabobo/dsusideloader/installer/root/DsuInstallPipelineTest.kt:570:115: warning: no cast needed
+        fun img(name: String) = DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
+                                                                                                                  ^
+app/src/test/java/vegabobo/dsusideloader/installer/root/DsuInstallPipelineTest.kt:584:91: warning: no cast needed
+        DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
+                                                                                          ^
+app/src/test/java/vegabobo/dsusideloader/review/FourthReviewRegressionTest.kt:58:30: warning: parameter 'id' is never used
+        private fun terminal(id: Long, step: String, detail: String = "") {
+                             ^
+tools/wiring-probes/HomeWiringHarness.kt:25:29: warning: parameter 'type' is never used
+    fun getExternalFilesDir(type: String?): File? = externalDirHook()
+                            ^
+tools/wiring-probes/HomeWiringHarness.kt:29:28: warning: parameter 'name' is never used
+    fun readFileFromAssets(name: String) = "#!/bin/sh\n%ACTION_INSTALL\n%UNMOUNT_SD"
+                           ^
+tools/wiring-probes/HomeWiringHarness.kt:43:28: warning: parameter 'key' is never used
+    fun cleanTaskWorkspace(key: String, all: Boolean) { onClean() }
+                           ^
+tools/wiring-probes/HomeWiringHarness.kt:43:41: warning: parameter 'all' is never used
+    fun cleanTaskWorkspace(key: String, all: Boolean) { onClean() }
+                                        ^
+tools/wiring-probes/HomeWiringHarness.kt:69:30: warning: parameter 'id' is never used
+    private fun startLogging(id: Long) {}
+                             ^
+tools/wiring-probes/HomeWiringHarness.kt:70:41: warning: parameter 'id' is never used
+    private fun remountSdCardsIfOwnedBy(id: Long, reason: String) {}
+                                        ^
+tools/wiring-probes/HomeWiringHarness.kt:70:51: warning: parameter 'reason' is never used
+    private fun remountSdCardsIfOwnedBy(id: Long, reason: String) {}
+                                                  ^
+tools/wiring-probes/HomeWiringHarness.kt:81:30: warning: parameter 'key' is never used
+    private fun readBoolPref(key: String) = false
+                             ^
+tools/wiring-probes/HomeWiringHarness.kt:82:30: warning: parameter 'step' is never used
+    private fun onStepUpdate(step: InstallationStep) {}
+                             ^
+tools/wiring-probes/HomeWiringHarness.kt:83:45: warning: parameter 'p' is never used
+    private fun onPreparationProgressUpdate(p: Float) {}
+                                            ^
+tools/wiring-probes/HomeWiringHarness.kt:84:38: warning: parameter 'id' is never used
+    private fun startDSUInstallation(id: Long) { error("unused root boundary") }
+                                     ^
+tools/wiring-probes/HomeWiringHarness.kt:172:34: warning: name shadowed: step
+                onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
+                                 ^
+tools/wiring-probes/stubs/AndroidLog.kt:3:11: warning: parameter 'tag' is never used
+    fun w(tag: String, message: String): Int = 0
+          ^
+tools/wiring-probes/stubs/AndroidLog.kt:3:24: warning: parameter 'message' is never used
+    fun w(tag: String, message: String): Int = 0
+                       ^
+tools/wiring-probes/stubs/AndroidLog.kt:4:11: warning: parameter 'tag' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+          ^
+tools/wiring-probes/stubs/AndroidLog.kt:4:24: warning: parameter 'message' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+                       ^
+tools/wiring-probes/stubs/AndroidLog.kt:4:41: warning: parameter 'error' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+                                        ^
+tools/wiring-probes/stubs/AndroidLog.kt:5:11: warning: parameter 'tag' is never used
+    fun d(tag: String, message: String): Int = 0
+          ^
+tools/wiring-probes/stubs/AndroidLog.kt:5:24: warning: parameter 'message' is never used
+    fun d(tag: String, message: String): Int = 0
+                       ^
+tools/wiring-probes/stubs/AndroidLog.kt:6:11: warning: parameter 'tag' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+          ^
+tools/wiring-probes/stubs/AndroidLog.kt:6:24: warning: parameter 'message' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+                       ^
+tools/wiring-probes/stubs/AndroidLog.kt:6:41: warning: parameter 'error' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+                                        ^
+tools/wiring-probes/stubs/Intent.kt:6:22: warning: parameter 'packageName' is never used
+    fun setClassName(packageName: String, className: String): Intent = this
+                     ^
+tools/wiring-probes/stubs/Intent.kt:6:43: warning: parameter 'className' is never used
+    fun setClassName(packageName: String, className: String): Intent = this
+                                          ^
+tools/wiring-probes/stubs/Intent.kt:7:18: warning: parameter 'name' is never used
+    fun putExtra(name: String, value: Long): Intent = this
+                 ^
+tools/wiring-probes/stubs/Intent.kt:7:32: warning: parameter 'value' is never used
+    fun putExtra(name: String, value: Long): Intent = this
+                               ^
+tools/wiring-probes/stubs/OperationModeUtils.kt:5:37: warning: parameter 'context' is never used
+    fun isReadLogsPermissionGranted(context: Any) = hook()
+                                    ^
+tools/wiring-probes/stubs/Preparation.kt:6:19: warning: parameter 'storageManager' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                  ^
+tools/wiring-probes/stubs/Preparation.kt:6:54: warning: parameter 'session' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                     ^
+tools/wiring-probes/stubs/Preparation.kt:6:72: warning: parameter 'job' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                                       ^
+tools/wiring-probes/stubs/Preparation.kt:6:82: warning: parameter 'taskKey' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                                                 ^
+tools/wiring-probes/stubs/Preparation.kt:7:5: warning: parameter 'onStepUpdate' is never used
+    onStepUpdate: (InstallationStep) -> Unit, onPreparationProgressUpdate: (Float) -> Unit,
+    ^
+tools/wiring-probes/stubs/Preparation.kt:7:47: warning: parameter 'onPreparationProgressUpdate' is never used
+    onStepUpdate: (InstallationStep) -> Unit, onPreparationProgressUpdate: (Float) -> Unit,
+                                              ^
+tools/wiring-probes/stubs/Preparation.kt:8:5: warning: parameter 'onCanceled' is never used
+    onCanceled: () -> Unit, val onPreparationFinished: (DSUInstallationSource) -> Unit) {
+    ^
+JUnit version 4.13.2
+.....................................................................................................................................................
+Time: 7.762
+
+OK (149 tests)
+
+JUnit version 4.13.2
+.FOURTH PROBE preparation cleanup: newTaskAdmitted=false newTaskFileDeleted=false
+.FOURTH PROBE submission publication: [cancel-finished-next-task=2]
+
+Time: 3.113
+
+OK (2 tests)
+
+JUnit version 4.13.2
+.FOURTH PROBE ADB storage unavailable during cancel: jobCompleted=true gateBusy=false nextTaskAdmitted=true card=ERROR_CANCELED
+
+Time: 0.118
+
+OK (1 test)
+
+JUnit version 4.13.2
+.FIFTH duplicate terminal: cleanup exactly once, no early unlock
+.FIFTH write failure without cancel: ERROR, gate released
+.FIFTH cancel + write/cleanup failure: both error details retained, gate released, cleanup once
+.FIFTH cancel after successful write: ERROR_CANCELED, gate released, cleanup once
+
+Time: 0.159
+
+OK (4 tests)
+
+JUnit version 4.13.2
+.RETRY parameter read failure: ERROR, gate released
+.RETRY dsu app: calls=[unmount, forceStop, startActivity, forceStop] maxParallel=1 card=CANCEL_REQUESTED_CLEANUP_UNVERIFIED
+.RETRY SELinux remedy cancelled: ERROR_CANCELED after cleanup (once), gate released
+.RETRY repeated taps: one task, writes=1, ADB card, gate released
+.RETRY adb write failure: ERROR, off caller thread=DefaultDispatcher-worker-2, gate released
+
+Time: 0.527
+
+OK (5 tests)
+
+Expected: all project tests, TR1/TR2, FR1, 4 fifth-review terminal probes and the retry-entry probes passing. These run verbatim ViewModel method fragments with substituted framework boundaries, NOT an Android ViewModel/lifecycle/Binder integration test.
