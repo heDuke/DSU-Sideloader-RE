@@ -156,13 +156,9 @@ dependencies {
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:_")
 
     compileOnly(project(":hidden-api-stub"))
+
+    testImplementation(Testing.junit4)
 }
 
-tasks {
-    "preBuild" {
-        dependsOn(lintKotlin)
-    }
-    "lintKotlin" {
-        dependsOn(formatKotlin)
-    }
-}
+// Formatting is a manual step (./gradlew formatKotlin). Builds and CI only *check* style
+// (lintKotlin is part of "check"); no task run during a build or in CI rewrites sources.
