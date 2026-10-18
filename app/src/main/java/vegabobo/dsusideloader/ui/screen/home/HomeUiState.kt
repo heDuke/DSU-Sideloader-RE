@@ -17,6 +17,8 @@ data class InstallationCardState(
     /** gsid reported an installation still running when the user asked to restore. */
     val storageRestoreBlocked: Boolean = false,
     val storageRestoreError: String = "",
+    /** Images of the package that were not installed (boot, vbmeta, ...), for the summary. */
+    val skippedImages: List<String> = emptyList(),
 )
 
 data class UserDataCardState(

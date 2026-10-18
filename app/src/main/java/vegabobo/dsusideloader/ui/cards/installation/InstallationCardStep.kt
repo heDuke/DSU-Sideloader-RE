@@ -80,9 +80,9 @@ fun InstallationCardStep(
                 showProgressBar = true,
                 progress = uiState.installationProgress,
             )
-        InstallationStep.DECOMPRESSING_GZIP ->
+        InstallationStep.VERIFYING_IMAGE_SIZE ->
             ProgressableCardContent(
-                text = stringResource(R.string.extracting_file),
+                text = stringResource(R.string.verifying_image_size),
                 textSecondButton = stringResource(id = R.string.cancel),
                 onClickSecondButton = onClickCancelInstallation,
                 showProgressBar = true,
@@ -287,7 +287,7 @@ fun InstallationCardStep(
             )
         InstallationStep.INSTALL_SUCCESS_REBOOT_DYN_OS ->
             ProgressableCardContent(
-                text = stringResource(R.string.installation_finished),
+                text = stringResource(R.string.installation_finished) + skippedImagesText(uiState),
                 textFirstButton = stringResource(id = R.string.reboot_into_dsu),
                 onClickFirstButton = onClickRebootToDynOS,
                 textSecondButton = stringResource(id = R.string.discard),
@@ -312,3 +312,11 @@ private fun storageRestoreText(uiState: InstallationCardState): String = when {
         "\n\n" + stringResource(R.string.storage_restore_failed, uiState.storageRestoreError)
     else -> ""
 }
+
+@Composable
+private fun skippedImagesText(uiState: InstallationCardState): String =
+    if (uiState.skippedImages.isEmpty()) {
+        ""
+    } else {
+        "\n\n" + stringResource(R.string.skipped_images, uiState.skippedImages.joinToString())
+    }

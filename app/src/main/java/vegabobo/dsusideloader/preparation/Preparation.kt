@@ -1,6 +1,7 @@
 package vegabobo.dsusideloader.preparation
 
 import android.net.Uri
+import android.util.Log
 import java.io.IOException
 import kotlinx.coroutines.Job
 import vegabobo.dsusideloader.core.StorageManager
@@ -124,13 +125,16 @@ class Preparation(
     private fun prepareGz(gzFile: Uri): Pair<Uri, Long> {
         val uri = getSafeUri(gzFile)
         if (userSelectedImageSize != DSUConstants.DEFAULT_IMAGE_SIZE) {
+            // Advanced override: skips the full scan, so the archive is NOT validated here
+            // (a wrong size or corrupt archive only fails later, in the system installer).
+            Log.w("Preparation", "Using manual image size $userSelectedImageSize without gzip verification")
             return Pair(uri, userSelectedImageSize)
         }
 
         // The gzip ISIZE trailer is the size modulo 2^32 (and only of the last member),
         // so it is ambiguous for images >= 4 GiB. Decompress (without writing to disk)
         // and count the exact size; this also rejects truncated/corrupt archives.
-        onStepUpdate(InstallationStep.DECOMPRESSING_GZIP)
+        onStepUpdate(InstallationStep.VERIFYING_IMAGE_SIZE)
         val compressedSize = storageManager.getFilesizeFromUri(uri)
         val imageSize = storageManager.openInputStream(uri).use { input ->
             GzipImageSize.countUncompressedBytes(input, { job.isCancelled }) { read ->

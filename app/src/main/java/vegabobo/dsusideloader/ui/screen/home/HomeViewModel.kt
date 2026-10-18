@@ -330,6 +330,7 @@ class HomeViewModel @Inject constructor(
             return null
         }
         installationJob = Job()
+        updateInstallationCard { it.copy(skippedImages = emptyList()) }
         return id
     }
 
@@ -433,6 +434,9 @@ class HomeViewModel @Inject constructor(
                 onCreatePartition = { part -> ifAccepts(id) { onCreatePartition(part) } },
                 onInstallationStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
                 onFinished = { result -> onRootInstallationFinished(id, result) },
+                onImageSkipped = { image ->
+                    ifAccepts(id) { updateInstallationCard { it.copy(skippedImages = it.skippedImages + image) } }
+                },
             ).invoke()
         }
     }

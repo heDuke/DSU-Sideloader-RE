@@ -123,6 +123,9 @@ class DsuInstallPipeline(
         fun onStep(step: InstallationStep) {}
         fun onProgress(progress: Float, partition: String) {}
 
+        /** An image present in the source that is not installed via DSU (e.g. boot, vbmeta). */
+        fun onSkipped(image: String, reason: String) {}
+
         companion object {
             val NONE = object : Listener {}
         }
@@ -138,6 +141,61 @@ class DsuInstallPipeline(
     private class CancelledSignal : Exception("cancelled")
 
     private var started = false
+
+    /** Result of checking all image names before anything is allocated. */
+    private class Plan(val install: Set<String>)
+
+    /** Images whose names were not known up front get their skip reported while streaming. */
+    private var plan: Plan? = null
+
+    private fun names(): List<Pair<String, Boolean>>? = when (source) {
+        is DsuImageSource.SingleImage -> listOf("${source.image.partition}.img" to false)
+        is DsuImageSource.MultipleImages -> source.images.map { "${it.partition}.img" to false }
+        is DsuImageSource.ZipPackage -> null
+    }
+
+    /**
+     * Applies the partition policy to every image before startInstallation/userdata allocation:
+     * unknown partitions or duplicates fail the whole install, exactly one system image is
+     * required, and skipped images are reported. Sources without a listing (streamed URL ZIP)
+     * can't be checked up front; the same rules are then enforced while streaming, before
+     * finishInstallation.
+     */
+    private fun preflight(entries: List<Pair<String, Boolean>>): Plan {
+        val tracker = DsuPartitionPolicy.Tracker()
+        val install = LinkedHashSet<String>()
+        for ((name, isDir) in entries) {
+            when (val d = tracker.decide(name, isDir)) {
+                is DsuPartitionPolicy.Decision.Install -> install += d.partition
+                is DsuPartitionPolicy.Decision.Skip -> reportSkip(name, d.reason)
+                is DsuPartitionPolicy.Decision.Reject -> fail(InstallationStep.ERROR, d.reason)
+            }
+        }
+        requireSystem(install)
+        log("Preflight: installing $install")
+        return Plan(install)
+    }
+
+    private fun reportSkip(name: String, reason: String) {
+        log("Skipping $name: $reason")
+        // Directories and non-image files are not worth a user-visible summary.
+        if (name.endsWith(".img")) listener.onSkipped(name, reason)
+    }
+
+    private fun requireSystem(install: Set<String>) {
+        if ("system" !in install) {
+            fail(InstallationStep.ERROR, "Exactly one system image is required, none found (images: $install)")
+        }
+    }
+
+    /** After streaming: the installed set must match the preflight plan and contain system. */
+    private fun verifyInstalledSet(installed: Set<String>) {
+        requireSystem(installed)
+        val expected = plan?.install ?: return
+        if (installed != expected) {
+            fail(InstallationStep.ERROR, "Package content differs from its directory: installed $installed, expected $expected")
+        }
+    }
 
     fun run(): DsuInstallResult {
         try {
@@ -155,6 +213,9 @@ class DsuInstallPipeline(
                     null,
                 )
             }
+            val catalog = (source as? DsuImageSource.ZipPackage)?.let { loadCatalog(it) }
+            val listed = names() ?: catalog?.map { it.name to it.isDirectory }
+            plan = listed?.let { preflight(it) }
             checkCancelled()
             backend.forceStopDsuApp()
             if (!backend.startInstallation(DEFAULT_SLOT)) {
@@ -165,7 +226,7 @@ class DsuInstallPipeline(
             when (source) {
                 is DsuImageSource.SingleImage -> installImages(listOf(source.image))
                 is DsuImageSource.MultipleImages -> installImages(source.images)
-                is DsuImageSource.ZipPackage -> installZip(source.open, loadCatalog(source))
+                is DsuImageSource.ZipPackage -> installZip(source.open, catalog)
             }
             checkCancelled()
             if (!backend.finishInstallation()) {
@@ -283,19 +344,20 @@ class DsuInstallPipeline(
 
     private fun installImages(images: List<DsuImageSource.Image>) {
         val tracker = DsuPartitionPolicy.Tracker()
-        var installed = 0
+        val installed = LinkedHashSet<String>()
         for (image in images) {
             checkCancelled()
             when (val decision = tracker.decide("${image.partition}.img")) {
                 is DsuPartitionPolicy.Decision.Install -> {
                     image.open().use { installImage(decision.partition, image.sizeHint, it) }
-                    installed++
+                    installed += decision.partition
                 }
-                is DsuPartitionPolicy.Decision.Skip -> log("Skipping ${image.partition}: ${decision.reason}")
+                // Already reported by the preflight.
+                is DsuPartitionPolicy.Decision.Skip -> Unit
                 is DsuPartitionPolicy.Decision.Reject -> fail(InstallationStep.ERROR, decision.reason)
             }
         }
-        if (installed == 0) fail(InstallationStep.ERROR, "No installable image found")
+        verifyInstalledSet(installed)
     }
 
     private fun loadCatalog(source: DsuImageSource.ZipPackage): List<ZipCatalogEntry>? =
@@ -311,7 +373,7 @@ class DsuInstallPipeline(
         // (closing it also closes the underlying stream), on success and on every failure.
         zipStreamFactory(open()).use { zis ->
             val tracker = DsuPartitionPolicy.Tracker()
-            var installed = 0
+            val installed = LinkedHashSet<String>()
             while (true) {
                 checkCancelled()
                 val entry = zis.nextEntry ?: break
@@ -335,13 +397,14 @@ class DsuInstallPipeline(
                             // sizes (data descriptor) before the partition is closed.
                             drainEntry(zis, entry.name)
                         }
-                        installed++
+                        installed += decision.partition
                     }
-                    is DsuPartitionPolicy.Decision.Skip -> log("Skipping ${entry.name}: ${decision.reason}")
+                    is DsuPartitionPolicy.Decision.Skip ->
+                        if (plan == null) reportSkip(entry.name, decision.reason) else log("Skipping ${entry.name}")
                     is DsuPartitionPolicy.Decision.Reject -> fail(InstallationStep.ERROR, decision.reason)
                 }
             }
-            if (installed == 0) fail(InstallationStep.ERROR, "No installable image found in package")
+            verifyInstalledSet(installed)
         }
     }
 

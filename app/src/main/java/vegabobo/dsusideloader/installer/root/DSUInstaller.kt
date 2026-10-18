@@ -46,6 +46,7 @@ class DSUInstaller(
     private val onCreatePartition: (partition: String) -> Unit,
     private val onInstallationStepUpdate: (step: InstallationStep) -> Unit,
     private val onFinished: (result: DsuInstallResult) -> Unit,
+    private val onImageSkipped: (image: String) -> Unit = {},
 ) : () -> Unit, DynamicSystemImpl() {
 
     private val tag = this.javaClass.simpleName
@@ -175,6 +176,7 @@ class DSUInstaller(
             isCancelled = { installationJob.isCancelled },
             listener = object : DsuInstallPipeline.Listener {
                 override fun onCreatePartition(partition: String) = this@DSUInstaller.onCreatePartition(partition)
+                override fun onSkipped(image: String, reason: String) = onImageSkipped(image)
                 override fun onStep(step: InstallationStep) = onInstallationStepUpdate(step)
                 override fun onProgress(progress: Float, partition: String) =
                     onInstallationProgressUpdate(progress, partition)

@@ -14,6 +14,15 @@ package vegabobo.dsusideloader.installer.root
  *    matching AOSP InstallationAsyncTask behaviour for DSU packages.
  *  - Remaining partitions must be in [ALLOWED_PARTITIONS], otherwise they are rejected.
  *  - A partition may appear only once; duplicates are rejected.
+ *  - The pipeline additionally requires exactly one `system` image.
+ *
+ * Why root-level only (no basename flattening): AOSP DSU packages (`gsi_*.zip`,
+ * InstallationAsyncTask) place images at the archive root. Mapping `foo/system.img` to
+ * `system` would let any nested file (e.g. a second variant in a sub folder, or a backup
+ * copy) silently become a partition, and two entries with the same basename would
+ * collide. Rejecting nested images makes the installed set exactly what the package root
+ * lists, so a wrong package fails before anything is allocated instead of installing a
+ * guessed image.
  */
 object DsuPartitionPolicy {
 

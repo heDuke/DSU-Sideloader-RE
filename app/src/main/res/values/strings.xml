@@ -255,4 +255,6 @@
     <string name="storage_restore_prompt" tools:ignore="MissingTranslation">The SD card was unmounted for a DSU installation and has not been restored, because the result of that installation is unknown. Finish or cancel the installation in the system DSU page (or its notification) first, then tap Restore storage.</string>
     <string name="storage_restore_blocked" tools:ignore="MissingTranslation">The system still reports a DSU installation in progress. Finish or cancel it first.</string>
     <string name="storage_restore_failed" tools:ignore="MissingTranslation">Could not restore: %1$s. Try again, or reinsert the card / restart the device.</string>
+    <string name="verifying_image_size" tools:ignore="MissingTranslation">Verifying the image and calculating its size…</string>
+    <string name="skipped_images" tools:ignore="MissingTranslation">Not installed (not supported by DSU): %1$s</string>
 </resources>

@@ -187,4 +187,6 @@
     <string name="storage_restore_prompt">为安装 DSU 卸载的 SD 卡尚未恢复，因为该次安装的结果未知。请先在系统 DSU 页面（或其通知）中完成或取消安装，然后点击“恢复存储”。</string>
     <string name="storage_restore_blocked">系统仍报告有 DSU 安装正在进行。请先完成或取消。</string>
     <string name="storage_restore_failed">恢复失败：%1$s。请重试，或重新插入存储卡/重启设备。</string>
+    <string name="verifying_image_size">正在校验并计算镜像大小</string>
+    <string name="skipped_images">未安装（DSU 不支持）：%1$s</string>
 </resources>

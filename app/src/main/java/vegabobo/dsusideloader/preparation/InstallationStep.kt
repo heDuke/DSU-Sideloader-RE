@@ -13,7 +13,7 @@ enum class InstallationStep {
     COPYING_FILE,
     DECOMPRESSING_XZ,
     COMPRESSING_TO_GZ,
-    DECOMPRESSING_GZIP,
+    VERIFYING_IMAGE_SIZE,
     EXTRACTING_FILE,
 
     // Installation Steps

@@ -572,8 +572,97 @@ class DsuInstallPipelineTest {
         assertEquals(DsuInstallResult.Success, ok)
         assertEquals(listOf("userdata", "system", "vendor"), b.written.keys.toList())
 
+        // Duplicates are now rejected by the preflight, before anything is allocated.
         val b2 = FakeBackend()
         val dup = run(b2, DsuImageSource.MultipleImages(listOf(img("system"), img("system"))))
-        assertFailedWithCleanup(b2, dup, InstallationStep.ERROR)
+        assertFailedBeforeStart(b2, dup, "duplicate partition")
+    }
+
+    // --- Product defaults: preflight before userdata allocation, exactly one system ---
+
+    private fun img(name: String) =
+        DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
+
+    private fun assertFailedBeforeStart(b: FakeBackend, r: DsuInstallResult, reason: String) {
+        assertTrue("$r", r is DsuInstallResult.Failed)
+        r as DsuInstallResult.Failed
+        assertTrue(r.info, r.info.contains(reason))
+        assertNull(r.cleanup)
+        assertFalse(b.calls.toString(), b.calls.any { it.startsWith("start:") || it.startsWith("create:") })
+    }
+
+    private class SkipRecorder : DsuInstallPipeline.Listener {
+        val skipped = mutableListOf<String>()
+        override fun onSkipped(image: String, reason: String) {
+            skipped += image
+        }
+    }
+
+    @Test
+    fun unknownPartitionFailsWholeInstallBeforeUserdata() {
+        val b = FakeBackend()
+        val r = run(b, DsuImageSource.MultipleImages(listOf(img("system"), img("my_custom"))))
+        assertFailedBeforeStart(b, r, "unsupported partition: my_custom")
+
+        val b2 = FakeBackend()
+        val zipBytes = zip("system.img" to payload, "foo.img" to payload)
+        val catalog = listOf(ZipCatalogEntry("system.img", false, 100), ZipCatalogEntry("foo.img", false, 100))
+        val r2 = run(b2, DsuImageSource.ZipPackage({ catalog }) { ByteArrayInputStream(zipBytes) })
+        assertFailedBeforeStart(b2, r2, "unsupported partition: foo")
+    }
+
+    @Test
+    fun exactlyOneSystemImageIsRequired() {
+        val b = FakeBackend()
+        assertFailedBeforeStart(b, run(b, DsuImageSource.MultipleImages(listOf(img("vendor")))), "system image is required")
+
+        val b2 = FakeBackend()
+        val zipBytes = zip("vendor.img" to payload)
+        val catalog = listOf(ZipCatalogEntry("vendor.img", false, 100))
+        assertFailedBeforeStart(
+            b2,
+            run(b2, DsuImageSource.ZipPackage({ catalog }) { ByteArrayInputStream(zipBytes) }),
+            "system image is required",
+        )
+
+        // Streamed source without a listing (URL): enforced before finishInstallation.
+        val b3 = FakeBackend()
+        val r3 = run(b3, DsuImageSource.ZipPackage { ByteArrayInputStream(zip("vendor.img" to payload)) })
+        assertTrue(r3 is DsuInstallResult.Failed)
+        assertTrue((r3 as DsuInstallResult.Failed).info.contains("system image is required"))
+        assertFalse(b3.calls.contains("finish"))
+        assertEquals(true, r3.cleanup?.succeeded)
+    }
+
+    @Test
+    fun skippedImagesAreReportedFromPreflightAndStream() {
+        val zipBytes = zip("system.img" to payload, "boot.img" to payload, "vbmeta.img" to payload, "README" to payload)
+        val catalog = listOf(
+            ZipCatalogEntry("system.img", false, 100),
+            ZipCatalogEntry("boot.img", false, 100),
+            ZipCatalogEntry("vbmeta.img", false, 100),
+            ZipCatalogEntry("README", false, 100),
+        )
+        for (withCatalog in listOf(true, false)) {
+            val b = FakeBackend()
+            val rec = SkipRecorder()
+            val src = DsuImageSource.ZipPackage(if (withCatalog) ({ catalog }) else null) { ByteArrayInputStream(zipBytes) }
+            val r = DsuInstallPipeline(b, 1024, src, { false }, listener = rec, progressPollIntervalMs = 5).run()
+            assertEquals(DsuInstallResult.Success, r)
+            assertEquals(listOf("boot.img", "vbmeta.img"), rec.skipped)
+            assertEquals(listOf("userdata", "system"), b.written.keys.toList())
+        }
+    }
+
+    @Test
+    fun streamContentMustMatchCentralDirectory() {
+        val b = FakeBackend()
+        // Directory lists system + vendor but the stream only carries system.
+        val zipBytes = zip("system.img" to payload)
+        val catalog = listOf(ZipCatalogEntry("system.img", false, 100), ZipCatalogEntry("vendor.img", false, 100))
+        val r = run(b, DsuImageSource.ZipPackage({ catalog }) { ByteArrayInputStream(zipBytes) })
+        assertTrue(r is DsuInstallResult.Failed)
+        assertTrue((r as DsuInstallResult.Failed).info.contains("differs"))
+        assertFalse(b.calls.contains("finish"))
     }
 }
