@@ -61,7 +61,7 @@ def main():
             "ui/screen/home/HomeUiState.kt", "core/TaskWorkspaces.kt",
         ]]
         kotlin += list((source / "app/src/test").rglob("*.kt"))
-        kotlin += sorted((here / "stubs").glob("*.kt")) + [here / "HomeWiringHarness.kt", here / "FourthReviewWiringTest.kt", here / "FifthReviewWiringTest.kt", here / "RetryWiringTest.kt"]
+        kotlin += sorted((here / "stubs").glob("*.kt")) + [here / "HomeWiringHarness.kt", here / "FourthReviewWiringTest.kt", here / "FifthReviewWiringTest.kt", here / "RetryWiringTest.kt", here / "RetryHistoryReviewTest.kt", here / "RetryHandoffWiringTest.kt"]
         subprocess.run(["java", "-cp", cp, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", cp, "-d", str(classes)] + list(map(str, kotlin)), check=True)
         runner = ["java", "-cp", cp, "org.junit.runner.JUnitCore"]
         baseline = subprocess.run(runner + [
@@ -85,8 +85,10 @@ def main():
         exceptional = subprocess.run(runner + ["review3.HandoffExceptionTest"])
         extra = subprocess.run(runner + ["review3.FifthReviewWiringTest"])
         retry = subprocess.run(runner + ["review3.RetryWiringTest"])
+        history = subprocess.run(runner + ["review3.RetryHistoryReviewTest"])
+        handoff = subprocess.run(runner + ["review3.RetryHandoffWiringTest"])
         print("Expected: all project tests, TR1/TR2, FR1, 4 fifth-review terminal probes and the retry-entry probes passing. These run verbatim ViewModel method fragments with substituted framework boundaries, NOT an Android ViewModel/lifecycle/Binder integration test.", flush=True)
-        return baseline.returncode or regressions.returncode or exceptional.returncode or extra.returncode or retry.returncode
+        return baseline.returncode or regressions.returncode or exceptional.returncode or extra.returncode or retry.returncode or history.returncode or handoff.returncode
 
 if __name__ == "__main__":
     raise SystemExit(main())

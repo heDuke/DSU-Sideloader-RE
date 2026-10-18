@@ -8,7 +8,7 @@ here = Path(__file__).resolve().parent
 source = (repo / 'app/src/main/java/vegabobo/dsusideloader/ui/screen/home/HomeViewModel.kt').read_text()
 names = [
     # Retry entries (fix/retry-entry-guard): currentOrNewTask moved into RetryEntry (TaskStep.kt).
-    'createRetryEntry', 'onClickRetryInstallation', 'onClickUnmountSdCardAndRetry', 'onClickSetSeLinuxPermissive',
+    'remountSdCardsIfOwnedBy', 'createRetryEntry', 'onClickRetryInstallation', 'onClickUnmountSdCardAndRetry', 'onClickSetSeLinuxPermissive',
     'setupAdbInstallation', 'onConfirmInstallationSheet', 'onPreparationFinished', 'startInstallation', 'beginTask', 'ifAccepts', 'updateInstallationCard',
     'onPreparationStepUnsettled', 'onTaskCancelledWithoutSystemChanges',
     'startPrivilegedInstallation', 'onClickCancelInstallationButton',
@@ -80,15 +80,16 @@ class HomeWiringHarness {
     @Volatile private var taskThatUnmounted: Long? = null
     private class Logger { fun destroy() {} }
     private var logger: Logger? = null
+    var persistHook: (PendingRemount?) -> Unit = {}
     private val sdCardRemounter = SdCardRemounter(object : PendingRemountStore {
         var record: PendingRemount? = null
         override suspend fun read() = record
-        override suspend fun write(record: PendingRemount?) { this.record = record }
+        override suspend fun write(record: PendingRemount?) { persistHook(record); this.record = record }
     })
     var bootIdHook: () -> String? = { "7" }
     private fun currentBootId(): String? = bootIdHook()
     private fun startLogging(id: Long) {}
-    private fun remountSdCardsIfOwnedBy(id: Long, reason: String) {}
+    private fun refreshStorageRestorePending() {}
     private fun dismissSheet() {}
     private fun resetInstallationCard() { _uiState.value = HomeUiState() }
     fun newTask(): Long? = beginTask()
@@ -96,6 +97,9 @@ class HomeWiringHarness {
     fun preparationStopped(id: Long) = onPreparationStepUnsettled(id, CancellationException("review cancellation"))
     fun busy(): Boolean = taskGate.isBusy()
     fun currentId(): Long? = taskGate.current()?.id
+    fun retryJob(id: Long) = taskGate.retryJobOf(id)!!
+    fun submissionJob() = dsuSubmission!!.job
+    suspend fun pendingRecord() = sdCardRemounter.pending()
     fun taskJob(id: Long) = taskGate.jobOf(id)!!
     fun cardError() = _uiState.value.installationCard.errorText
     fun cardStep() = _uiState.value.installationCard.installationStep
