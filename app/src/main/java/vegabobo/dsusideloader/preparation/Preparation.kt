@@ -1,10 +1,17 @@
 package vegabobo.dsusideloader.preparation
 
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import java.io.IOException
 import kotlinx.coroutines.Job
 import vegabobo.dsusideloader.core.StorageManager
+import vegabobo.dsusideloader.loader.ImageIntegrity
+import vegabobo.dsusideloader.loader.ImageSource
+import vegabobo.dsusideloader.loader.InstallOptions
+import vegabobo.dsusideloader.loader.InstallPlanner
+import vegabobo.dsusideloader.loader.InstallerBackend
+import vegabobo.dsusideloader.loader.LoaderEnvironment
 import vegabobo.dsusideloader.model.DSUConstants
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
@@ -22,16 +29,39 @@ class Preparation(
 ) : () -> Unit {
 
     private val userSelectedImageSize = session.userSelection.userSelectedImageSize
-    private val userSelectedFileUri = session.userSelection.selectedFileUri
+    private var userSelectedFileUri = session.userSelection.selectedFileUri
 
     override fun invoke() {
+        val plan = InstallPlanner.create(
+            ImageSource(userSelectedFileUri.toString(), session.userSelection.selectedFileName, session.preferences.expectedSha256),
+            InstallOptions(
+                session.userSelection.userSelectedUserdata,
+                userSelectedImageSize,
+                session.preferences.backend,
+                session.preferences.useBuiltinInstaller,
+            ),
+            LoaderEnvironment(Build.VERSION.SDK_INT, session.getOperationMode().name, session.isRoot(), session.getOperationMode().name == "ADB"),
+        )
+        session.installPlan = plan
+        if (job.isCancelled) { onCanceled(); return }
         // Only the current task can be preparing (task gate), so leftovers of earlier tasks
         // and of the old flat layout can be removed (best effort).
         val stale = runCatching { storageManager.removeStaleWorkspaces(taskKey) }
         if (stale.getOrNull()?.isNotEmpty() != false) {
             Log.w("Preparation", "Could not remove stale workspace entries: ${stale.getOrNull() ?: stale.exceptionOrNull()}")
         }
-        if (session.preferences.useBuiltinInstaller && session.isRoot()) {
+        storageManager.cleanTaskWorkspace(taskKey, true)
+        if (plan.source.expectedSha256.isNotEmpty()) {
+            onStepUpdate(InstallationStep.VERIFYING_IMAGE_SIZE)
+            val verified = storageManager.createDocumentFile("verified-source.${plan.source.name.substringAfterLast('.').lowercase()}", taskKey)
+            storageManager.openInputStream(userSelectedFileUri).use { input ->
+                storageManager.openOutputStream(verified.uri).use { output ->
+                    ImageIntegrity.copyVerified(input, output, plan.source.expectedSha256) { job.isCancelled }
+                }
+            }
+            userSelectedFileUri = verified.uri
+        }
+        if (plan.backend == InstallerBackend.ROOT_DIRECT) {
             prepareRooted()
             return
         }
@@ -68,7 +98,6 @@ class Preparation(
     }
 
     private fun prepareForDSU() {
-        storageManager.cleanTaskWorkspace(taskKey, true)
         val fileExtension = getExtension(userSelectedFileUri)
         val preparedFilePair =
             when (fileExtension) {
@@ -92,7 +121,15 @@ class Preparation(
 
         // Intermediate files only (the prepared .gz is kept for the DSU app); a failed delete is
         // not fatal here, the cancel/failure path and the next task clean again.
-        runCatching { storageManager.cleanTaskWorkspace(taskKey, job.isCancelled) }
+        // A prepared ZIP may be in our workspace too; it is still the installation input.
+        // Keep it until the task's cancellation/failure cleanup or a later task removes it.
+        runCatching {
+            if (job.isCancelled) {
+                storageManager.cleanTaskWorkspace(taskKey, true)
+            } else {
+                storageManager.cleanTaskWorkspaceKeeping(taskKey, preparedUri)
+            }
+        }
             .onFailure { Log.w("Preparation", "Workspace cleanup failed", it) }
 
         if (!job.isCancelled) {
@@ -190,6 +227,6 @@ class Preparation(
 
     private fun getExtension(uri: Uri): String {
         return storageManager.getFilenameFromUri(uri)
-            .substringAfterLast(".", "")
+            .substringAfterLast(".", "").lowercase()
     }
 }

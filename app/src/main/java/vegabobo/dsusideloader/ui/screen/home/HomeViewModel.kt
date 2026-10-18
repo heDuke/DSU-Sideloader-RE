@@ -42,6 +42,10 @@ import vegabobo.dsusideloader.installer.task.InstallOutcome
 import vegabobo.dsusideloader.installer.task.InstallTaskGate
 import vegabobo.dsusideloader.installer.task.RetryEntry
 import vegabobo.dsusideloader.installer.task.TaskSteps
+import vegabobo.dsusideloader.loader.BackendPreference
+import vegabobo.dsusideloader.loader.InstallPlanner
+import vegabobo.dsusideloader.loader.InstallerBackend
+import vegabobo.dsusideloader.loader.LoaderEnvironment
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
 import vegabobo.dsusideloader.preferences.AppPrefs
@@ -327,9 +331,30 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onClickInstall() {
-        session.userSelection.setUserDataSize(uiState.value.userDataCard.text)
-        session.userSelection.setImageSize(uiState.value.imageSizeCard.text)
+        if (taskGate.isBusy()) return
+        try {
+            session.userSelection.setUserDataSize(uiState.value.userDataCard.text)
+            session.userSelection.setImageSize(uiState.value.imageSizeCard.text)
+            val hash = uiState.value.expectedSha256
+            require(hash.isBlank() || hash.matches(Regex("[a-fA-F0-9]{64}"))) { "Invalid SHA-256" }
+        } catch (e: IllegalArgumentException) {
+            updateInstallationCard { it.copy(installationStep = InstallationStep.ERROR, errorText = e.message ?: "Invalid options") }
+            return
+        }
         updateSheetState(SheetDisplayState.CONFIRM_INSTALLATION)
+    }
+
+    fun updateExpectedSha256(value: String) {
+        if (taskGate.isBusy()) return
+        val hash = value.trim().take(128)
+        session.preferences.expectedSha256 = hash
+        _uiState.update { it.copy(expectedSha256 = hash) }
+    }
+
+    fun selectBackend(backend: BackendPreference) {
+        if (taskGate.isBusy()) return
+        session.preferences.backend = backend
+        _uiState.update { it.copy(backend = backend) }
     }
 
     /** Starts a new task, or returns null if one is still running/cleaning up. */
@@ -467,6 +492,19 @@ class HomeViewModel @Inject constructor(
         Log.d(tag, "startInstallation(task $id), session: \n$session")
         ifAccepts(id) { updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) } }
 
+        session.installPlan?.let { plan ->
+            InstallPlanner.assertEnvironment(
+                plan,
+                LoaderEnvironment(Build.VERSION.SDK_INT, session.getOperationMode().name, session.isRoot(), session.getOperationMode() == OperationMode.ADB),
+            )
+            when (plan.backend) {
+                InstallerBackend.ADB_ASSISTED -> setupAdbInstallation(id, inStep)
+                InstallerBackend.ROOT_DIRECT -> startDSUInstallation(id)
+                InstallerBackend.SYSTEM_DSU -> startPrivilegedInstallation(id)
+            }
+            return
+        }
+
         if (session.getOperationMode() == OperationMode.ADB) {
             setupAdbInstallation(id, inStep)
             return
@@ -513,7 +551,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             DSUInstaller(
                 application = application,
-                userdataSize = session.userSelection.userSelectedUserdata,
+                userdataSize = session.installPlan?.options?.userdataBytes ?: session.userSelection.userSelectedUserdata,
                 dsuInstallation = session.dsuInstallation,
                 installationJob = job,
                 onInstallationProgressUpdate = { p, part -> ifAccepts(id) { onInstallationProgressUpdate(p, part) } },
@@ -938,7 +976,7 @@ class HomeViewModel @Inject constructor(
             "disabledStorageCheck: $disabledStorageCheck, selectedSize: $selectedSize, maximumAllowedForAllocation: $maximumAllowedForAllocation",
         )
 
-        if (!disabledStorageCheck && selectedSize.isNotEmpty() && selectedSize.toInt() > maximumAllowedForAllocation) {
+        if (!disabledStorageCheck && selectedSize.isNotEmpty() && (selectedSize.toLongOrNull() ?: Long.MAX_VALUE) > maximumAllowedForAllocation) {
             val fixedSize =
                 FilenameUtils.appendToDigitsToString("$maximumAllowedForAllocation", "GB")
             updateUserdataCard {
@@ -993,8 +1031,9 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onFileSelectionResult(uri: Uri) {
+        if (taskGate.isBusy()) return
         val filename = FilenameUtils.queryName(application.contentResolver, uri)
-        val extension = filename.substringAfterLast(".", "")
+        val extension = filename.substringAfterLast(".", "").lowercase()
         val supportedFiles = arrayListOf("gz", "xz", "img", "gzip")
 
         // DSU packages (zip files), are only supported in R+
@@ -1015,6 +1054,9 @@ class HomeViewModel @Inject constructor(
 
         session.userSelection.selectedFileName = filename
         session.userSelection.selectedFileUri = uri
+        session.installPlan = null
+        session.preferences.expectedSha256 = ""
+        _uiState.update { it.copy(expectedSha256 = "") }
         updateInstallationCard {
             it.copy(
                 text = filename,

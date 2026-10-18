@@ -61,6 +61,7 @@ def main():
             "ui/screen/home/HomeUiState.kt", "core/TaskWorkspaces.kt",
         ]]
         kotlin += list((source / "app/src/test").rglob("*.kt"))
+        kotlin += list((production / "loader").rglob("*.kt"))
         kotlin += sorted((here / "stubs").glob("*.kt")) + [here / "HomeWiringHarness.kt", here / "FourthReviewWiringTest.kt", here / "FifthReviewWiringTest.kt", here / "RetryWiringTest.kt", here / "RetryHistoryReviewTest.kt", here / "RetryHandoffWiringTest.kt", here / "RecoveryReviewTest.kt", here / "LoggingHandoffReviewTest.kt", here / "LoggingHandoffWiringTest.kt", here / "CardOwnershipWiringTest.kt"]
         subprocess.run(["java", "-cp", cp, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", cp, "-d", str(classes)] + list(map(str, kotlin)), check=True)
         runner = ["java", "-cp", cp, "org.junit.runner.JUnitCore"]
@@ -80,6 +81,7 @@ def main():
             "vegabobo.dsusideloader.review.ThirdReviewRegressionTest",
             "vegabobo.dsusideloader.review.FourthReviewRegressionTest",
             "vegabobo.dsusideloader.installer.task.RetryEntryTest",
+            "vegabobo.dsusideloader.loader.InstallPlannerTest",
         ])
         regressions = subprocess.run(runner + ["review3.FourthReviewWiringTest"])
         exceptional = subprocess.run(runner + ["review3.HandoffExceptionTest"])

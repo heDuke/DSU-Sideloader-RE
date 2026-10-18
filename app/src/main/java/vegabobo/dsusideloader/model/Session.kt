@@ -2,12 +2,17 @@ package vegabobo.dsusideloader.model
 
 import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
+import vegabobo.dsusideloader.loader.BackendPreference
+import vegabobo.dsusideloader.loader.InstallPlan
+import vegabobo.dsusideloader.loader.InstallPlanner
 import vegabobo.dsusideloader.util.FilenameUtils
 import vegabobo.dsusideloader.util.OperationMode
 
 data class InstallationPreferences(
     var isUnmountSdCard: Boolean = false,
     var useBuiltinInstaller: Boolean = false,
+    var backend: BackendPreference = BackendPreference.AUTO,
+    var expectedSha256: String = "",
 )
 
 class UserSelection(
@@ -20,21 +25,11 @@ class UserSelection(
     fun getUserDataSizeAsGB(): String = "${(this.userSelectedUserdata / 1024L / 1024L / 1024L)}"
 
     fun setUserDataSize(size: String) {
-        userSelectedUserdata =
-            if (size.isNotEmpty()) {
-                (FilenameUtils.getDigits(size).toLong()) * 1024L * 1024L * 1024L
-            } else {
-                DSUConstants.DEFAULT_USERDATA
-            }
+        userSelectedUserdata = InstallPlanner.userdataBytes(size)
     }
 
     fun setImageSize(size: String) {
-        userSelectedImageSize =
-            if (size.isNotEmpty()) {
-                FilenameUtils.getDigits(size).toLong()
-            } else {
-                DSUConstants.DEFAULT_IMAGE_SIZE
-            }
+        userSelectedImageSize = InstallPlanner.imageBytes(size)
     }
 
     fun isCustomImageSize(): Boolean {
@@ -56,6 +51,8 @@ class Session(
     var operationMode: MutableStateFlow<OperationMode> = MutableStateFlow(OperationMode.ADB),
 ) {
 
+    var installPlan: InstallPlan? = null
+
     fun isRoot(): Boolean {
         return (
             operationMode.value == OperationMode.SYSTEM_AND_ROOT ||
@@ -72,12 +69,13 @@ class Session(
     var installationScriptPath = ""
 
     fun getInstallationParameters(): Triple<Long, String, Long> {
-        val userdataSize = userSelection.userSelectedUserdata
+        val userdataSize = installPlan?.options?.userdataBytes ?: userSelection.userSelectedUserdata
         val absoluteFilePath = FilenameUtils.getFilePath(dsuInstallation.uri, true)
 
         var imageSize = dsuInstallation.fileSize
-        if (userSelection.isCustomImageSize()) {
-            imageSize = userSelection.userSelectedImageSize
+        val override = installPlan?.options?.imageSizeOverride ?: userSelection.userSelectedImageSize
+        if (override != DSUConstants.DEFAULT_IMAGE_SIZE) {
+            imageSize = override
         }
         return Triple(userdataSize, absoluteFilePath, imageSize)
     }

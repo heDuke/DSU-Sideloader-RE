@@ -1,5 +1,6 @@
 package vegabobo.dsusideloader.ui.screen.home
 
+import vegabobo.dsusideloader.loader.BackendPreference
 import vegabobo.dsusideloader.preparation.InstallationStep
 
 data class InstallationCardState(
@@ -63,6 +64,8 @@ enum class SheetDisplayState {
 }
 
 data class HomeUiState(
+    val expectedSha256: String = "",
+    val backend: BackendPreference = BackendPreference.AUTO,
     val installationCard: InstallationCardState = InstallationCardState(),
     val userDataCard: UserDataCardState = UserDataCardState(),
     val imageSizeCard: ImageSizeCardState = ImageSizeCardState(),

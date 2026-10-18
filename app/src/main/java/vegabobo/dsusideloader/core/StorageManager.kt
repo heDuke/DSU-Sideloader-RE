@@ -118,6 +118,10 @@ class StorageManager(
         TaskWorkspaces.clean(DocumentEntry(getWorkspaceFolder()), taskKey, deleteAlsoGzFile)
     }
 
+    fun cleanTaskWorkspaceKeeping(taskKey: String, preparedUri: Uri) {
+        TaskWorkspaces.clean(DocumentEntry(getWorkspaceFolder()), taskKey, false, setOf(getFilenameFromUri(preparedUri)))
+    }
+
     /** Removes leftovers of earlier tasks; only call while task [taskKey] owns the task gate. */
     fun removeStaleWorkspaces(taskKey: String): List<String> =
         TaskWorkspaces.removeAllExcept(DocumentEntry(getWorkspaceFolder()), taskKey)

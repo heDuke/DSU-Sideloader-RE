@@ -36,12 +36,12 @@ object TaskWorkspaces {
      * removed too; otherwise prepared `.gz` images (still needed by the DSU app) are kept.
      * @throws java.io.IOException if an entry could not be deleted.
      */
-    fun clean(root: WorkspaceRoot, key: String, deleteAlsoGz: Boolean) {
+    fun clean(root: WorkspaceRoot, key: String, deleteAlsoGz: Boolean, keepNames: Set<String> = emptySet()) {
         require(isTaskKey(key)) { "Not a task workspace: $key" }
         val dir = root.list().firstOrNull { it.isDirectory && it.name == key } ?: return
         val failed = mutableListOf<String>()
         for (entry in dir.list()) {
-            if (deleteAlsoGz || !entry.name.endsWith("gz")) {
+            if (deleteAlsoGz || (!entry.name.endsWith("gz") && entry.name !in keepNames)) {
                 if (!entry.delete()) failed += entry.name
             }
         }
