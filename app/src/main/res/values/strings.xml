@@ -257,4 +257,5 @@
     <string name="storage_restore_failed" tools:ignore="MissingTranslation">Could not restore: %1$s. Try again, or reinsert the card / restart the device.</string>
     <string name="verifying_image_size" tools:ignore="MissingTranslation">Verifying the image and calculating its size…</string>
     <string name="skipped_images" tools:ignore="MissingTranslation">Not installed (not supported by DSU): %1$s</string>
+    <string name="cancel_cleanup_unverified" tools:ignore="MissingTranslation">Cancellation requested; the cleanup result can\'t be confirmed.\n%1$s\n\nNext: check the DSU notification; discard any leftover DSU before installing again (restart the device if it cannot be discarded).</string>
 </resources>

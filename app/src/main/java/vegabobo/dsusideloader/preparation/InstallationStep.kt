@@ -33,6 +33,7 @@ enum class InstallationStep {
 
     // Cleanup after a failure/cancel did not complete or the system state is unknown
     ERROR_CLEANUP_INCOMPLETE,
+    CANCEL_REQUESTED_CLEANUP_UNVERIFIED,
     ERROR_CANCELED,
     ERROR_REQUIRES_DISCARD_DSU,
     ERROR_ALREADY_RUNNING_DYN_OS,

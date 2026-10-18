@@ -13,6 +13,7 @@ import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -28,6 +29,8 @@ import vegabobo.dsusideloader.core.StorageManager
 import vegabobo.dsusideloader.installer.adb.AdbInstallationHandler
 import vegabobo.dsusideloader.installer.privileged.DataStorePendingRemountStore
 import vegabobo.dsusideloader.installer.privileged.DsuInstallationHandler
+import vegabobo.dsusideloader.installer.privileged.DsuSubmission
+import vegabobo.dsusideloader.installer.privileged.DsuSubmissionStep
 import vegabobo.dsusideloader.installer.privileged.LogcatDiagnostic
 import vegabobo.dsusideloader.installer.privileged.SdCardRemounter
 import vegabobo.dsusideloader.installer.privileged.SystemDsuState
@@ -309,6 +312,10 @@ class HomeViewModel @Inject constructor(
 
     private val taskGate = InstallTaskGate()
 
+    /** The DSU app submission step of the current task, if any. */
+    @Volatile
+    private var dsuSubmission: DsuSubmissionStep? = null
+
     fun obtainSelectedFilename(): String = session.userSelection.selectedFileName
 
     fun onClickCancel() {
@@ -473,23 +480,42 @@ class HomeViewModel @Inject constructor(
         val canTrackResult =
             session.isRoot() || OperationModeUtils.isReadLogsPermissionGranted(application)
         if (session.preferences.isUnmountSdCard) taskThatUnmounted = id
-        DsuInstallationHandler(
+        // Parameters are captured now; the submission runs as a child of the task's Job, so
+        // the cancel path can stop it and wait for it (see cancelDsuAppInstallation).
+        val submission = DsuInstallationHandler(
             session = session,
             sdCardRemounter = sdCardRemounter,
             bootId = currentBootId(),
-            onSubmitted = {
-                if (!canTrackResult) {
-                    // Without READ_LOGS we cannot observe the DSU app: the request was submitted,
-                    // but success can't be confirmed, so never report INSTALL_SUCCESS here.
-                    ifAccepts(id) {
-                        updateInstallationCard {
-                            it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED)
+        ).submission
+        val stepJob = TaskSteps.launch(
+            scope = viewModelScope,
+            context = Dispatchers.IO + installationJob,
+            start = CoroutineStart.LAZY,
+            onUnsettled = { cause -> onSubmissionStepUnsettled(id, cause, submission) },
+        ) { step ->
+            when (val result = submission.submit()) {
+                DsuSubmission.Result.Submitted -> {
+                    step.settle()
+                    if (!canTrackResult) {
+                        // Without READ_LOGS we cannot observe the DSU app: the request was submitted,
+                        // but success can't be confirmed, so never report INSTALL_SUCCESS here.
+                        ifAccepts(id) {
+                            updateInstallationCard {
+                                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED)
+                            }
                         }
                     }
                 }
-            },
-            onError = { onTaskFailed(id, InstallationStep.ERROR, it) },
-        ).startInstallation()
+                is DsuSubmission.Result.Failed ->
+                    if (step.settle()) onTaskFailed(id, InstallationStep.ERROR, result.message)
+                // Left unsettled: the completion fallback / cancel path decides.
+                DsuSubmission.Result.Cancelled -> Unit
+            }
+        }
+        // Published before the step can run: a concurrent cancel either sees it (and waits
+        // for it) or cancelled the task Job first (then the lazy step never runs).
+        dsuSubmission = DsuSubmissionStep(id, submission, stepJob)
+        stepJob.start()
         if (canTrackResult) {
             startLogging(id)
         }
@@ -552,39 +578,59 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Submission step ended without a result (cancelled, or returned without settling). */
+    private fun onSubmissionStepUnsettled(id: Long, cause: Throwable?, submission: DsuSubmission) {
+        if (taskGate.isCancelling(id)) return // the cancel path waits for this step and decides
+        if (submission.hasReachedSystem) {
+            onTaskFailed(id, InstallationStep.ERROR, cause?.toString() ?: "Submission ended without a result")
+        } else {
+            onTaskCancelledWithoutSystemChanges(id)
+        }
+    }
+
     private fun cancelDsuAppInstallation(id: Long) {
         logger?.destroy()
-        PrivilegedProvider.run(
-            onFail = {
+        val step = dsuSubmission?.takeIf { it.taskId == id }
+        viewModelScope.launch(Dispatchers.IO) {
+            // Wait until the request can no longer unmount storage or open the DSU prompt.
+            val reachedSystem = step?.cancelAndJoin() ?: false
+            if (!reachedSystem) {
+                finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, ""))
+                return@launch
+            }
+            val service = PrivilegedProvider.awaitService()
+            if (service == null) {
                 finishCancelWithOutcome(
                     id,
                     InstallOutcome(InstallationStep.ERROR_CLEANUP_INCOMPLETE, "privileged service unavailable"),
                 )
-            },
-        ) {
-            val outcome = try {
-                // Since stopping installation requires MANAGE_DYNAMIC_SYSTEM
-                // then, we stop installation using other way, not so polite, but works :)))
-                forceStopPackage("com.android.dynsystem")
-                if (session.isRoot()) {
-                    // Root can verify and clean up what the killed DSU app left behind.
-                    val aborted = runCatching { abort() }.getOrDefault(false)
-                    val removed = runCatching { remove() }.getOrDefault(false)
-                    val stillInstalled = runCatching { isInstalled }.getOrNull()
-                    InstallOutcome.from(
-                        DsuInstallResult.Cancelled(
-                            CleanupResult(aborted, removed, stillInstalled = stillInstalled),
-                        ),
-                    )
-                } else {
-                    // Shell can't query DynamicSystem (no MANAGE_DYNAMIC_SYSTEM): state unknown.
-                    InstallOutcome(
-                        InstallationStep.ERROR_CLEANUP_INCOMPLETE,
-                        "DSU app stopped; system DSU state can't be verified without root",
-                    )
+                return@launch
+            }
+            val outcome = with(service) {
+                try {
+                    // Since stopping installation requires MANAGE_DYNAMIC_SYSTEM
+                    // then, we stop installation using other way, not so polite, but works :)))
+                    forceStopPackage("com.android.dynsystem")
+                    if (session.isRoot()) {
+                        // Root can verify and clean up what the killed DSU app left behind.
+                        val aborted = runCatching { abort() }.getOrDefault(false)
+                        val removed = runCatching { remove() }.getOrDefault(false)
+                        val stillInstalled = runCatching { isInstalled }.getOrNull()
+                        InstallOutcome.from(
+                            DsuInstallResult.Cancelled(
+                                CleanupResult(aborted, removed, stillInstalled = stillInstalled),
+                            ),
+                        )
+                    } else {
+                        // Shell can't query DynamicSystem (no MANAGE_DYNAMIC_SYSTEM): state unknown.
+                        InstallOutcome(
+                            InstallationStep.CANCEL_REQUESTED_CLEANUP_UNVERIFIED,
+                            "DSU app stopped; system DSU state can't be verified without root",
+                        )
+                    }
+                } catch (e: Exception) {
+                    InstallOutcome(InstallationStep.ERROR_CLEANUP_INCOMPLETE, e.toString())
                 }
-            } catch (e: Exception) {
-                InstallOutcome(InstallationStep.ERROR_CLEANUP_INCOMPLETE, e.toString())
             }
             finishCancelWithOutcome(id, outcome)
         }

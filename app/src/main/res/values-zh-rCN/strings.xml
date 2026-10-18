@@ -189,4 +189,5 @@
     <string name="storage_restore_failed">恢复失败：%1$s。请重试，或重新插入存储卡/重启设备。</string>
     <string name="verifying_image_size">正在校验并计算镜像大小</string>
     <string name="skipped_images">未安装（DSU 不支持）：%1$s</string>
+    <string name="cancel_cleanup_unverified">已请求取消，清理结果无法确认。\n%1$s\n\n下一步：查看 DSU 通知；再次安装前先丢弃残留的 DSU（无法丢弃时请重启设备）。</string>
 </resources>

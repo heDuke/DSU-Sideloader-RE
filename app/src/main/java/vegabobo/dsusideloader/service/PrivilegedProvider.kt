@@ -39,6 +39,23 @@ object PrivilegedProvider {
         }
     }
 
+    /**
+     * Cancellable wait for the service (same 20 s budget as [run]); null if unavailable.
+     * Use it inside a task coroutine so cancelling the task also stops the wait.
+     */
+    suspend fun awaitService(timeoutMs: Long = 20000): IPrivilegedService? {
+        var waited = 0L
+        while (!isConnected()) {
+            if (waited >= timeoutMs) {
+                Log.e(tag, "Service unavailable.")
+                return null
+            }
+            delay(1000)
+            waited += 1000
+        }
+        return connection.SERVICE
+    }
+
     // Blocking
     fun getService(): IPrivilegedService {
         var timeout = 0

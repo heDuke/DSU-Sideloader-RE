@@ -159,6 +159,14 @@ fun InstallationCardStep(
                 showProgressBar = true,
                 isIndeterminate = true,
             )
+        InstallationStep.CANCEL_REQUESTED_CLEANUP_UNVERIFIED ->
+            ProgressableCardContent(
+                text = stringResource(R.string.cancel_cleanup_unverified, uiState.errorText),
+                textFirstButton = stringResource(id = R.string.view_logs),
+                onClickFirstButton = onClickViewLogs,
+                textSecondButton = stringResource(id = R.string.mreturn),
+                onClickSecondButton = { onCardAction(InstallationCardAction.ACK_CLEANUP_INCOMPLETE) },
+            )
         InstallationStep.ERROR_CLEANUP_INCOMPLETE ->
             ProgressableCardContent(
                 text = stringResource(R.string.cleanup_incomplete, uiState.errorText),
