@@ -1,0 +1,53 @@
+[versions]
+agp = "8.7.3"
+kotlin = "2.1.21"
+hilt = "2.56.2"
+compose = "1.8.2"
+compose-runtime = "1.9.0"
+material3 = "1.5.0-alpha10"
+serialization = "1.8.1"
+aboutlibraries = "10.6.2"
+
+[libraries]
+appcompat = { module = "androidx.appcompat:appcompat", version = "1.6.1" }
+datastore = { module = "androidx.datastore:datastore-preferences", version = "1.0.0" }
+activity-compose = { module = "androidx.activity:activity-compose", version = "1.10.1" }
+viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version = "2.6.1" }
+navigation-compose = { module = "androidx.navigation:navigation-compose", version = "2.5.2" }
+compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
+compose-material = { module = "androidx.compose.material:material", version.ref = "compose" }
+compose-livedata = { module = "androidx.compose.runtime:runtime-livedata", version.ref = "compose-runtime" }
+compose-runtime = { module = "androidx.compose.runtime:runtime", version.ref = "compose-runtime" }
+compose-icons = { module = "androidx.compose.material:material-icons-extended", version = "1.7.8" }
+compose-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose" }
+compose-ui = { module = "androidx.compose.ui:ui", version.ref = "compose" }
+core = { module = "androidx.core:core-ktx", version = "1.10.0" }
+fragment = { module = "androidx.fragment:fragment-ktx", version = "1.5.7" }
+preference = { module = "androidx.preference:preference-ktx", version = "1.2.0" }
+lifecycle = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version = "2.6.1" }
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+hilt-navigation = { module = "androidx.hilt:hilt-navigation-compose", version = "1.0.0" }
+material = { module = "com.google.android.material:material", version = "1.8.0" }
+serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+libsu-core = { module = "com.github.topjohnwu.libsu:core", version = "5.0.5" }
+libsu-service = { module = "com.github.topjohnwu.libsu:service", version = "5.0.5" }
+xz = { module = "org.tukaani:xz", version = "1.9" }
+compress = { module = "org.apache.commons:commons-compress", version = "1.23.0" }
+aboutlibraries = { module = "com.mikepenz:aboutlibraries-core", version.ref = "aboutlibraries" }
+shizuku-api = { module = "dev.rikka.shizuku:api", version = "13.1.1" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version = "13.1.1" }
+hiddenapi = { module = "org.lsposed.hiddenapibypass:hiddenapibypass", version = "4.3" }
+junit = { module = "junit:junit", version = "4.13.2" }
+ktlint = { module = "com.pinterest:ktlint", version = "0.48.2" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin", version.ref = "aboutlibraries" }
