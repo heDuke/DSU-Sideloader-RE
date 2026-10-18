@@ -37,6 +37,7 @@ import vegabobo.dsusideloader.installer.root.DSUInstaller
 import vegabobo.dsusideloader.installer.root.DsuInstallResult
 import vegabobo.dsusideloader.installer.task.InstallOutcome
 import vegabobo.dsusideloader.installer.task.InstallTaskGate
+import vegabobo.dsusideloader.installer.task.TaskSteps
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
 import vegabobo.dsusideloader.preferences.AppPrefs
@@ -344,36 +345,44 @@ class HomeViewModel @Inject constructor(
         val id = beginTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
         val job = installationJob
-        viewModelScope.launch(Dispatchers.IO + job) {
+        // The whole entry (preference reads included) is one task step: if it is cancelled
+        // before it starts, while suspended in a preference read, or fails anywhere, the
+        // completion fallback produces exactly one terminal outcome and releases the task.
+        TaskSteps.launch(
+            scope = viewModelScope,
+            context = Dispatchers.IO + job,
+            onUnsettled = { cause -> onPreparationStepUnsettled(id, cause) },
+            onErrorAfterSettle = { e ->
+                Log.e(tag, "Starting the installation failed", e)
+                onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
+            },
+        ) { step ->
             session.preferences.isUnmountSdCard = readBoolPref(AppPrefs.UMOUNT_SD)
             session.preferences.useBuiltinInstaller = readBoolPref(AppPrefs.USE_BUILTIN_INSTALLER)
-            try {
-                Preparation(
-                    storageManager = storageManager,
-                    session = session,
-                    job = job,
-                    onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
-                    onPreparationProgressUpdate = { p -> ifAccepts(id) { onPreparationProgressUpdate(p) } },
-                    onCanceled = { onTaskCancelledWithoutSystemChanges(id) },
-                    onPreparationFinished = { onPreparationFinished(id, it) },
-                ).invoke()
-            } catch (e: CancellationException) {
-                // Don't leave partially decompressed/compressed files behind.
-                runCatching { storageManager.cleanWorkspaceFolder(true) }
-                onTaskCancelledWithoutSystemChanges(id)
-                throw e
-            } catch (e: Exception) {
-                // Unsupported/corrupt/truncated input, I/O or storage errors: report instead of
-                // crashing or silently continuing.
-                Log.e(tag, "Preparation failed", e)
-                runCatching { storageManager.cleanWorkspaceFolder(true) }
-                if (taskGate.isCancelling(id)) {
-                    onTaskCancelledWithoutSystemChanges(id)
-                } else {
-                    onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
-                }
-            }
+            Preparation(
+                storageManager = storageManager,
+                session = session,
+                job = job,
+                onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
+                onPreparationProgressUpdate = { p -> ifAccepts(id) { onPreparationProgressUpdate(p) } },
+                onCanceled = { if (step.settle()) onPreparationStepUnsettled(id, CancellationException("preparation cancelled")) },
+                onPreparationFinished = { if (step.settle()) onPreparationFinished(id, it) },
+            ).invoke()
         }
+    }
+
+    /** Terminal outcome of a preparation step that did not hand the task over. */
+    private fun onPreparationStepUnsettled(id: Long, cause: Throwable?) {
+        // Don't leave partially decompressed/compressed files behind (off the caller thread:
+        // a cancel-before-start completes synchronously in the cancelling thread).
+        viewModelScope.launch(Dispatchers.IO) { runCatching { storageManager.cleanWorkspaceFolder(true) } }
+        if (cause is CancellationException || taskGate.isCancelling(id)) {
+            onTaskCancelledWithoutSystemChanges(id)
+            return
+        }
+        // Unsupported/corrupt/truncated input, I/O, preference or storage errors.
+        Log.e(tag, "Preparation failed", cause)
+        onTaskFailed(id, InstallationStep.ERROR, cause?.message ?: cause?.toString() ?: "Preparation ended without a result")
     }
 
     private fun onPreparationFinished(id: Long, dsuInstallation: DSUInstallationSource) {
