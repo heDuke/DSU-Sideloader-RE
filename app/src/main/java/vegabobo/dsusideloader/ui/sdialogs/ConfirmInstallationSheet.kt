@@ -22,6 +22,8 @@ fun ConfirmInstallationSheet(
     filename: String,
     userdata: String,
     fileSize: Long,
+    backend: String = "",
+    expectedSha256: String = "",
     onClickConfirm: () -> Unit,
     onClickCancel: () -> Unit,
 ) {
@@ -50,6 +52,12 @@ fun ConfirmInstallationSheet(
                     text = "${fileSize}b",
                     textColor = MaterialTheme.colorScheme.onBackground,
                 )
+            }
+            if (backend.isNotEmpty()) {
+                DialogItem(icon = Icons.Outlined.InstallMobile, title = stringResource(R.string.re_backend), text = backend)
+            }
+            if (expectedSha256.isNotEmpty()) {
+                DialogItem(icon = Icons.Outlined.Article, title = stringResource(R.string.re_sha_label), text = expectedSha256)
             }
         },
         confirmText = stringResource(id = R.string.proceed),

@@ -6,5 +6,6 @@ import vegabobo.dsusideloader.model.*
 class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
     onStepUpdate: (InstallationStep) -> Unit, onPreparationProgressUpdate: (Float) -> Unit,
     onCanceled: () -> Unit, val onPreparationFinished: (DSUInstallationSource) -> Unit) {
-    fun invoke() { onPreparationFinished(DSUInstallationSource()) }
+    companion object { var beforePrepared: () -> Unit = {} }
+    fun invoke() { beforePrepared(); onPreparationFinished(DSUInstallationSource(uri = "content://review/system.gz")) }
 }

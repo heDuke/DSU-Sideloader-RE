@@ -21,8 +21,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import vegabobo.dsusideloader.BuildConfig
 import vegabobo.dsusideloader.IPrivilegedService
+import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.core.BaseViewModel
 import vegabobo.dsusideloader.core.StorageManager
 import vegabobo.dsusideloader.core.TaskWorkspaces
@@ -45,7 +49,10 @@ import vegabobo.dsusideloader.installer.task.TaskSteps
 import vegabobo.dsusideloader.loader.BackendPreference
 import vegabobo.dsusideloader.loader.InstallPlanner
 import vegabobo.dsusideloader.loader.InstallerBackend
+import vegabobo.dsusideloader.loader.LibraryCatalog
 import vegabobo.dsusideloader.loader.LoaderEnvironment
+import vegabobo.dsusideloader.loader.SavedImage
+import vegabobo.dsusideloader.loader.SourceSelectionGate
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
 import vegabobo.dsusideloader.preferences.AppPrefs
@@ -70,6 +77,8 @@ class HomeViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    private val libraryMutex = Mutex()
+    private val sourceSelections = SourceSelectionGate()
 
     var checkDynamicPartitions = true
     var checkUnavaiableStorage = true
@@ -331,7 +340,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onClickInstall() {
-        if (taskGate.isBusy()) return
+        if (taskGate.isBusy() || uiState.value.sourceLoading) return
         try {
             session.userSelection.setUserDataSize(uiState.value.userDataCard.text)
             session.userSelection.setImageSize(uiState.value.imageSizeCard.text)
@@ -359,6 +368,7 @@ class HomeViewModel @Inject constructor(
 
     /** Starts a new task, or returns null if one is still running/cleaning up. */
     private fun beginTask(): Long? {
+        if (_uiState.value.sourceLoading) return null
         // Each task gets its own workspace directory (TaskWorkspaces), so the cleanup of one
         // task can never delete files of another.
         val id = taskGate.begin { TaskWorkspaces.taskKey(it, System.currentTimeMillis()) }
@@ -378,6 +388,9 @@ class HomeViewModel @Inject constructor(
     fun onConfirmInstallationSheet() {
         dismissSheet()
         val id = beginTask() ?: return
+        // A new preparation attempt invalidates any earlier prepared input, even if this
+        // attempt fails during preferences, inspection or hash verification.
+        session.dsuInstallation = DSUInstallationSource()
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
         val job = taskGate.jobOf(id) ?: return
         val taskKey = taskGate.workspaceOf(id) ?: return
@@ -489,6 +502,7 @@ class HomeViewModel @Inject constructor(
 
     /** [inStep]: called from the task's preparation step (see onPreparationStepUnsettled). */
     private fun startInstallation(id: Long, inStep: Boolean = false) {
+        check(session.dsuInstallation.uri.toString().isNotEmpty()) { "Image preparation has not completed" }
         Log.d(tag, "startInstallation(task $id), session: \n$session")
         ifAccepts(id) { updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) } }
 
@@ -886,6 +900,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onClickRetryInstallation() {
+        // A preparation/hash failure has no prepared input. Retry the preparation step,
+        // rather than submitting an empty source or bypassing its integrity check.
+        if (session.dsuInstallation.uri.toString().isEmpty()) {
+            if (!taskGate.isBusy()) onConfirmInstallationSheet()
+            return
+        }
         retryEntry.retry()
     }
 
@@ -1030,39 +1050,158 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun onFileSelectionResult(uri: Uri) {
+    fun onFileSelectionResult(uri: Uri, saved: SavedImage? = null) {
         if (taskGate.isBusy()) return
-        val filename = FilenameUtils.queryName(application.contentResolver, uri)
-        val extension = filename.substringAfterLast(".", "").lowercase()
-        val supportedFiles = arrayListOf("gz", "xz", "img", "gzip")
-
-        // DSU packages (zip files), are only supported in R+
-        if (Build.VERSION.SDK_INT > 29) {
-            supportedFiles.add("zip")
-        }
-        val isFileSupported = supportedFiles.contains(extension)
-        Log.d(tag, "isFileSupported: $isFileSupported, extension: $extension, filename: $filename")
-
-        if (!isFileSupported) {
-            viewModelScope.launch {
-                updateInstallationCard { it.copy(isError = true, isTextFieldEnabled = false) }
-                delay(2000)
-                updateInstallationCard { it.copy(isError = false, isTextFieldEnabled = true) }
-            }
-            return
-        }
-
-        session.userSelection.selectedFileName = filename
-        session.userSelection.selectedFileUri = uri
+        dismissSheet()
+        session.userSelection.selectedFileUri = Uri.EMPTY
+        session.userSelection.selectedFileName = ""
         session.installPlan = null
-        session.preferences.expectedSha256 = ""
-        _uiState.update { it.copy(expectedSha256 = "") }
-        updateInstallationCard {
-            it.copy(
-                text = filename,
-                isTextFieldEnabled = false,
-                isInstallable = true,
-            )
+        session.dsuInstallation = DSUInstallationSource()
+        updateInstallationCard { it.copy(installationStep = InstallationStep.NOT_INSTALLING, isInstallable = false, isTextFieldEnabled = false, text = "", errorText = "", isError = false) }
+        val generation = sourceSelections.begin()
+        _uiState.update { it.copy(sourceLoading = true, sourceRequestId = generation) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val filename = FilenameUtils.queryName(application.contentResolver, uri)
+                val extension = filename.substringAfterLast(".", "").lowercase()
+                require(extension in listOf("gz", "xz", "img", "gzip") || (extension == "zip" && Build.VERSION.SDK_INT >= 30)) {
+                    application.getString(R.string.file_unsupported)
+                }
+                // Some providers do not offer persistent grants; selection can still be used
+                // in this session. Opening a saved entry always rechecks the provider.
+                runCatching { application.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                withContext(Dispatchers.Main.immediate) {
+                    if (taskGate.isBusy() || !sourceSelections.finish(generation)) return@withContext
+                    session.userSelection.selectedFileName = filename
+                    session.userSelection.selectedFileUri = uri
+                    session.installPlan = null
+                    session.preferences.expectedSha256 = saved?.sha256 ?: ""
+                    session.preferences.backend = saved?.backend ?: uiState.value.backend
+                    _uiState.update {
+                        it.copy(
+                            sourceLoading = false,
+                            expectedSha256 = saved?.sha256 ?: "",
+                            backend = session.preferences.backend,
+                            imageSizeCard = ImageSizeCardState(),
+                            userDataCard = if (saved == null) it.userDataCard else it.userDataCard.copy(isSelected = true, text = "${saved.userdataGiB}GB"),
+                            installationCard = InstallationCardState(
+                                text = filename,
+                                isTextFieldEnabled = false,
+                                isInstallable = true,
+                                storageRestorePending = it.installationCard.storageRestorePending,
+                                storageRestoreBlocked = it.installationCard.storageRestoreBlocked,
+                                storageRestoreError = it.installationCard.storageRestoreError,
+                            ),
+                        )
+                    }
+                    mutateLibrary { images -> LibraryCatalog.upsert(images, saved?.copy(name = filename) ?: images.firstOrNull { it.uri == uri.toString() } ?: SavedImage(uri.toString(), filename)) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                withContext(Dispatchers.Main.immediate) {
+                    if (!taskGate.isBusy() && sourceSelections.finish(generation)) {
+                        _uiState.update { it.copy(sourceLoading = false) }
+                        updateInstallationCard { it.copy(installationStep = InstallationStep.NOT_INSTALLING, isInstallable = false, isTextFieldEnabled = true, isError = true, errorText = e.message ?: e.toString()) }
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadImageLibrary() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                libraryMutex.withLock {
+                    val images = LibraryCatalog.parse(readStringPref(AppPrefs.IMAGE_LIBRARY))
+                    _uiState.update { it.copy(library = images, libraryError = "") }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(libraryError = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    fun cancelSourceSelection(requestId: Long) {
+        if (taskGate.isBusy() || !sourceSelections.finish(requestId)) return
+        _uiState.update { it.copy(sourceLoading = false) }
+        updateInstallationCard { it.copy(isTextFieldEnabled = true) }
+    }
+
+    private fun mutateLibrary(transform: (List<SavedImage>) -> List<SavedImage>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                libraryMutex.withLock {
+                    // A corrupt/unknown version is reported, never overwritten with an empty library.
+                    val images = transform(LibraryCatalog.parse(readStringPref(AppPrefs.IMAGE_LIBRARY)))
+                    val encoded = LibraryCatalog.serialize(images)
+                    require(encoded.length <= 512 * 1024) { "Image library is too large" }
+                    updateStringPref(AppPrefs.IMAGE_LIBRARY, encoded)
+                    _uiState.update { it.copy(library = images, libraryError = "") }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(libraryError = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    fun selectSavedImage(image: SavedImage) = onFileSelectionResult(Uri.parse(image.uri), image)
+
+    fun toggleFavorite(image: SavedImage) = mutateLibrary { images -> images.map { if (it.uri == image.uri) it.copy(favorite = !it.favorite) else it } }
+
+    fun removeSavedImage(image: SavedImage) = mutateLibrary { images -> images.filterNot { it.uri == image.uri } }
+
+    fun saveCurrentPreset(note: String) {
+        if (taskGate.isBusy() || session.userSelection.selectedFileUri == Uri.EMPTY) return
+        try {
+            val state = uiState.value
+            val gib = InstallPlanner.userdataBytes(state.userDataCard.text) / InstallPlanner.GIB
+            val hash = state.expectedSha256
+            require(hash.isEmpty() || hash.matches(Regex("[a-fA-F0-9]{64}"))) { "Invalid SHA-256" }
+            val uri = session.userSelection.selectedFileUri.toString()
+            val name = session.userSelection.selectedFileName
+            mutateLibrary { images ->
+                val previous = images.firstOrNull { it.uri == uri }
+                LibraryCatalog.upsert(images, SavedImage(uri, name, hash, gib, state.backend, previous?.favorite ?: false, note.take(2000)))
+            }
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(libraryError = e.message ?: e.toString()) }
+        }
+    }
+
+    fun exportImageLibrary(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val text = LibraryCatalog.serialize(uiState.value.library)
+                storageManager.openOutputStream(uri).bufferedWriter().use { it.write(text) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(libraryError = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    fun importImageLibrary(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val text = storageManager.openInputStream(uri).bufferedReader().use { reader ->
+                    val output = StringBuilder()
+                    val buffer = CharArray(4096)
+                    while (true) {
+                        val count = reader.read(buffer)
+                        if (count < 0) break
+                        require(output.length + count <= 512 * 1024) { "Image library is too large" }
+                        output.append(buffer, 0, count)
+                    }
+                    output.toString()
+                }
+                val imported = LibraryCatalog.parse(text)
+                mutateLibrary { current -> imported.asReversed().fold(current) { images, image -> LibraryCatalog.upsert(images, image) } }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(libraryError = e.message ?: e.toString()) }
+            }
         }
     }
 

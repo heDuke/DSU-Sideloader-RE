@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- New renovation copy: English and Simplified Chinese; other translations pending. -->
+    <string name="re_nav_overview" tools:ignore="MissingTranslation">Overview</string>
+    <string name="re_nav_images" tools:ignore="MissingTranslation">Images</string>
+    <string name="re_nav_tasks" tools:ignore="MissingTranslation">Tasks</string>
+    <string name="re_nav_tools" tools:ignore="MissingTranslation">Tools</string>
+    <string name="re_hero_title" tools:ignore="MissingTranslation">Another Android. Your space.</string>
+    <string name="re_hero_body" tools:ignore="MissingTranslation">Choose an image, check your setup and review the installation before continuing.</string>
+    <string name="re_environment" tools:ignore="MissingTranslation">Permission mode: %1$s</string>
+    <string name="re_plan_steps" tools:ignore="MissingTranslation">Choose → Configure → Review → Install → Verify</string>
+    <string name="re_backend" tools:ignore="MissingTranslation">Installation backend</string>
+    <string name="re_backend_auto" tools:ignore="MissingTranslation">Recommended</string>
+    <string name="re_backend_system" tools:ignore="MissingTranslation">System DSU</string>
+    <string name="re_backend_root" tools:ignore="MissingTranslation">Root direct</string>
+    <string name="re_backend_help" tools:ignore="MissingTranslation">The backend is fixed when preparation begins. System DSU may require a confirmation or an ADB command. Direct installation requires root and Android 11+.</string>
+    <string name="re_integrity" tools:ignore="MissingTranslation">Image integrity</string>
+    <string name="re_sha_label" tools:ignore="MissingTranslation">Expected SHA-256 (optional)</string>
+    <string name="re_sha_help" tools:ignore="MissingTranslation">Use the hash of the selected file, including compression. A matching file is copied into the task workspace before preparation. This requires additional storage and time.</string>
+    <string name="re_sha_invalid" tools:ignore="MissingTranslation">Enter exactly 64 hexadecimal characters.</string>
+    <string name="re_save_preset" tools:ignore="MissingTranslation">Save image preset</string>
+    <string name="re_note" tools:ignore="MissingTranslation">Notes (optional)</string>
+    <string name="re_preset_help" tools:ignore="MissingTranslation">Saves userdata size, backend, hash and notes for this source. Open it from Images to apply the preset.</string>
+    <string name="re_library_title" tools:ignore="MissingTranslation">Your image collection</string>
+    <string name="re_library_empty" tools:ignore="MissingTranslation">Your next system starts here</string>
+    <string name="re_library_body" tools:ignore="MissingTranslation">Add local images and keep a preset for each one. Entries reference your documents; they are not extra bootable DSU slots.</string>
+    <string name="re_add_image" tools:ignore="MissingTranslation">Add image</string>
+    <string name="re_open_image" tools:ignore="MissingTranslation">Use this image</string>
+    <string name="re_favorite" tools:ignore="MissingTranslation">Add to favorites</string>
+    <string name="re_unfavorite" tools:ignore="MissingTranslation">Remove from favorites</string>
+    <string name="re_remove_image" tools:ignore="MissingTranslation">Remove library entry</string>
+    <string name="re_remove_body" tools:ignore="MissingTranslation">Remove this entry and its preset? The source image will remain untouched.</string>
+    <string name="re_import" tools:ignore="MissingTranslation">Import presets</string>
+    <string name="re_export" tools:ignore="MissingTranslation">Export presets</string>
+    <string name="re_library_transfer" tools:ignore="MissingTranslation">Exports include document references and notes, not image files or permissions. Re-select a document if its permission is no longer available.</string>
+    <string name="re_saved_options" tools:ignore="MissingTranslation">%1$d GiB userdata · %2$s</string>
+    <string name="re_tasks_title" tools:ignore="MissingTranslation">Current installation</string>
+    <string name="re_tasks_body" tools:ignore="MissingTranslation">This page shows the current app session. An unconfirmed request stays unconfirmed until the system result is checked.</string>
+    <string name="re_tasks_idle" tools:ignore="MissingTranslation">No installation is running in this app session. Choose an image in Overview or Images to begin.</string>
+    <string name="re_view_task" tools:ignore="MissingTranslation">View task</string>
+    <string name="re_tools_title" tools:ignore="MissingTranslation">Understand your setup</string>
+    <string name="re_tools_body" tools:ignore="MissingTranslation">Inspect permissions, installation logs and the system DSU guide.</string>
+    <string name="re_logs_empty" tools:ignore="MissingTranslation">No installation logs in this session.</string>
+    <string name="re_help" tools:ignore="MissingTranslation">Android DSU guide</string>
+    <string name="re_appearance" tools:ignore="MissingTranslation">Appearance</string>
+    <string name="re_theme_mode" tools:ignore="MissingTranslation">Theme</string>
+    <string name="re_theme_system" tools:ignore="MissingTranslation">Follow system</string>
+    <string name="re_theme_light" tools:ignore="MissingTranslation">Light</string>
+    <string name="re_theme_dark" tools:ignore="MissingTranslation">Dark</string>
+    <string name="re_brand_colors" tools:ignore="MissingTranslation">Use brand colors</string>
+    <string name="re_brand_help" tools:ignore="MissingTranslation">Turn off to follow wallpaper colors on Android 12 and later.</string>
+    <string name="re_back" tools:ignore="MissingTranslation">Back</string>
+    <string name="re_gib" tools:ignore="MissingTranslation">%1$d GiB</string>
+    <string name="re_options" tools:ignore="MissingTranslation">Make it yours</string>
+    <string name="re_advanced" tools:ignore="MissingTranslation">Advanced image size</string>
+    <string name="re_status_ready" tools:ignore="MissingTranslation">Ready to prepare</string>
+    <string name="re_status_task" tools:ignore="MissingTranslation">Installation status</string>
+    <string name="re_no_device_validation" tools:ignore="MissingTranslation">Device validation pending</string>
+    <string name="re_reading_source" tools:ignore="MissingTranslation">Reading image information…</string>
+    <string name="re_verifying_hash" tools:ignore="MissingTranslation">Verifying SHA-256 and copying the image…</string>
+</resources>

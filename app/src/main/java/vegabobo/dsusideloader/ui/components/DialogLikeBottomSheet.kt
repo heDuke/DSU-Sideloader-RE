@@ -1,7 +1,8 @@
 package vegabobo.dsusideloader.ui.components
 
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,7 +21,7 @@ import kotlinx.coroutines.launch
 import vegabobo.dsusideloader.ui.components.buttons.PrimaryButton
 import vegabobo.dsusideloader.ui.components.buttons.SecondaryButton
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun DialogLikeBottomSheet(
     modifier: Modifier = Modifier,
@@ -51,12 +52,11 @@ fun DialogLikeBottomSheet(
         Text(
             modifier = Modifier.fillMaxWidth(),
             text = text,
-            textAlign = TextAlign.Justify,
+            textAlign = TextAlign.Start,
             color = MaterialTheme.colorScheme.onBackground,
         )
         content()
-        Row(modifier = Modifier.padding(top = 16.dp)) {
-            Spacer(modifier = Modifier.weight(1F))
+        FlowRow(modifier = Modifier.padding(top = 16.dp)) {
             SecondaryButton(
                 text = cancelText,
                 onClick = { coroutineScope.launch { it() /* Hide Sheet before cancelling */; onClickCancel() } },

@@ -1,35 +1,28 @@
 package vegabobo.dsusideloader.ui.cards.updater
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import vegabobo.dsusideloader.BuildConfig
 import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.ui.components.PreferenceItem
@@ -39,6 +32,7 @@ import vegabobo.dsusideloader.ui.components.buttons.SecondaryButton
 import vegabobo.dsusideloader.ui.screen.about.UpdateStatus
 import vegabobo.dsusideloader.ui.screen.about.UpdaterCardState
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun UpdaterCard(
     uiState: UpdaterCardState,
@@ -48,9 +42,6 @@ fun UpdaterCard(
     onClickDownloadUpdate: () -> Unit,
     onClickViewChangelog: () -> Unit,
 ) {
-    fun isDownloading(): Boolean =
-        uiState.isDownloading || uiState.updateStatus == UpdateStatus.CHECKING_FOR_UPDATES
-
     fun isCheckingForUpdates(): Boolean =
         uiState.updateStatus == UpdateStatus.CHECKING_FOR_UPDATES
 
@@ -66,58 +57,19 @@ fun UpdaterCard(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Surface(
-                modifier = Modifier
-                    .padding(10.dp)
-                    .padding(top = 16.dp),
-                color = MaterialTheme.colorScheme.inverseOnSurface,
-            ) {
-                Box {
-                    val progressBarModifier = Modifier
-                        .size(100.dp)
-                        .align(Alignment.Center)
-                    if (isCheckingForUpdates()) {
-                        CircularProgressIndicator(modifier = progressBarModifier)
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.app_name)) },
+                supportingContent = { Text(stringResource(R.string.version_info, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)) },
+                leadingContent = {
+                    IconButton(onClick = onClickImage, shapes = IconButtonDefaults.shapes()) {
+                        Image(painter = painterResource(R.drawable.app_icon_mini), contentDescription = stringResource(R.string.app_name), modifier = Modifier.size(24.dp))
                     }
-                    if (uiState.isDownloading) {
-                        CircularProgressIndicator(
-                            progress = uiState.progressBar,
-                            modifier = progressBarModifier,
-                        )
-                    }
-
-                    val selected = remember { mutableStateOf(false) }
-                    val scale = animateFloatAsState(if (selected.value) 0.75f else 1f)
-                    selected.value = isDownloading()
-                    Image(
-                        modifier = Modifier
-                            .size(96.dp)
-                            .scale(scale.value)
-                            .clip(CircleShape)
-                            .align(Alignment.Center)
-                            .clickable { onClickImage() },
-                        painter = painterResource(id = R.drawable.app_icon_mini),
-                        contentDescription = "App icon",
-                    )
-                }
-            }
-            Text(
-                text = stringResource(id = R.string.app_name),
-                fontSize = 22.sp,
-                style = MaterialTheme.typography.headlineMedium,
-                textAlign = TextAlign.Center,
+                },
             )
-            Text(
-                text = stringResource(
-                    id = R.string.version_info,
-                    BuildConfig.VERSION_NAME,
-                    BuildConfig.VERSION_CODE,
-                ),
-                fontSize = 16.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.alpha(0.75f),
-            )
+            if (isCheckingForUpdates()) LoadingIndicator(modifier = Modifier.padding(16.dp))
+            if (uiState.isDownloading) LinearWavyProgressIndicator(progress = { uiState.progressBar }, modifier = Modifier.fillMaxWidth().padding(16.dp))
         }
+
         Spacer(modifier = Modifier.padding(4.dp))
         if (isUpdaterAvailable) {
             PreferenceItem(
@@ -136,12 +88,11 @@ fun UpdaterCard(
                 onClick = { onClickCheckUpdates() },
             )
             AnimatedVisibility(visible = isUpdateFound()) {
-                Row(
+                FlowRow(
                     modifier = Modifier
                         .padding(all = 12.dp)
                         .padding(end = 4.dp),
                 ) {
-                    Spacer(modifier = Modifier.weight(1F))
                     SecondaryButton(
                         text = stringResource(id = R.string.changelog),
                         onClick = { onClickViewChangelog() },

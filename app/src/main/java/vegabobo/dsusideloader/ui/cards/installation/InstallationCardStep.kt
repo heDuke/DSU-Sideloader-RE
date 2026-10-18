@@ -16,6 +16,7 @@ fun InstallationCardStep(
     textFieldInteraction: MutableInteractionSource,
     minPercentageOfFreeStorage: String = "40",
     onClickClear: () -> Unit,
+    onClickSelectFile: () -> Unit,
     onClickInstall: () -> Unit,
     onClickRetryInstallation: () -> Unit,
     onClickUnmountSdCardAndRetry: () -> Unit,
@@ -34,6 +35,7 @@ fun InstallationCardStep(
                 textFieldInteraction = textFieldInteraction,
                 uiState = uiState,
                 onClickClear = onClickClear,
+                onClickSelectFile = onClickSelectFile,
                 onClickInstall = onClickInstall,
             )
         InstallationStep.DSU_ALREADY_INSTALLED ->
@@ -87,6 +89,14 @@ fun InstallationCardStep(
                 onClickSecondButton = onClickCancelInstallation,
                 showProgressBar = true,
                 progress = uiState.installationProgress,
+            )
+        InstallationStep.VERIFYING_IMAGE_INTEGRITY ->
+            ProgressableCardContent(
+                text = stringResource(R.string.re_verifying_hash),
+                textSecondButton = stringResource(R.string.cancel),
+                onClickSecondButton = onClickCancelInstallation,
+                showProgressBar = true,
+                isIndeterminate = true,
             )
         InstallationStep.EXTRACTING_FILE ->
             ProgressableCardContent(

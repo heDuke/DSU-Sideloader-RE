@@ -82,6 +82,7 @@ def main():
             "vegabobo.dsusideloader.review.FourthReviewRegressionTest",
             "vegabobo.dsusideloader.installer.task.RetryEntryTest",
             "vegabobo.dsusideloader.loader.InstallPlannerTest",
+            "vegabobo.dsusideloader.loader.LibraryCatalogTest",
         ])
         regressions = subprocess.run(runner + ["review3.FourthReviewWiringTest"])
         exceptional = subprocess.run(runner + ["review3.HandoffExceptionTest"])

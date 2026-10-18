@@ -52,7 +52,7 @@ class Preparation(
         }
         storageManager.cleanTaskWorkspace(taskKey, true)
         if (plan.source.expectedSha256.isNotEmpty()) {
-            onStepUpdate(InstallationStep.VERIFYING_IMAGE_SIZE)
+            onStepUpdate(InstallationStep.VERIFYING_IMAGE_INTEGRITY)
             val verified = storageManager.createDocumentFile("verified-source.${plan.source.name.substringAfterLast('.').lowercase()}", taskKey)
             storageManager.openInputStream(userSelectedFileUri).use { input ->
                 storageManager.openOutputStream(verified.uri).use { output ->

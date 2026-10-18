@@ -32,6 +32,10 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     fun reloadPreferences() {
+        viewModelScope.launch {
+            val theme = readStringPref(AppPrefs.THEME_MODE).ifEmpty { "system" }
+            _uiState.update { it.copy(themeMode = theme) }
+        }
         uiState.value.preferences.forEach { entry ->
             viewModelScope.launch {
                 val isEnabled = readBoolPref(entry.key)
@@ -63,6 +67,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun isAndroidQ(): Boolean = Build.VERSION.SDK_INT == 29
+
+    fun setThemeMode(mode: String) {
+        if (mode !in setOf("system", "light", "dark")) return
+        viewModelScope.launch {
+            updateStringPref(AppPrefs.THEME_MODE, mode) { _uiState.update { it.copy(themeMode = mode) } }
+        }
+    }
 
     fun updateSheetDisplay(sheet: DialogSheetState) {
         _uiState.update { it.copy(dialogSheetDisplay = sheet) }

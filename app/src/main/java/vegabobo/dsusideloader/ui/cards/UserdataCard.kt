@@ -3,22 +3,29 @@ package vegabobo.dsusideloader.ui.cards
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.ui.components.CardBox
 import vegabobo.dsusideloader.ui.components.FileSelectionBox
 import vegabobo.dsusideloader.ui.screen.home.UserDataCardState
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun UserdataCard(
     isEnabled: Boolean,
@@ -35,6 +42,19 @@ fun UserdataCard(
         isToggleChecked = uiState.isSelected,
         onCheckedChange = onCheckedChange,
     ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(2, 4, 8, 16).forEach { gib ->
+                ToggleButton(
+                    checked = if (uiState.text.isEmpty()) gib == 2 else uiState.text == "${gib}GB",
+                    enabled = !isEnabled,
+                    onCheckedChange = {
+                        if (!uiState.isSelected) onCheckedChange(true)
+                        onValueChange(gib.toString())
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text(stringResource(R.string.re_gib, gib)) }
+            }
+        }
         AnimatedVisibility(
             visible = uiState.isSelected,
             enter = expandVertically(),
@@ -58,8 +78,7 @@ fun UserdataCard(
                             uiState.maximumAllowed,
                         ),
                         color = MaterialTheme.colorScheme.error,
-                        lineHeight = 14.sp,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
