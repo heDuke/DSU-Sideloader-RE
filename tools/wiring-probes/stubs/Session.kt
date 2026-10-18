@@ -1,6 +1,7 @@
 package vegabobo.dsusideloader.model
 class DSUInstallationSource(var uri: String = "content://review/system.gz", var fileSize: Long = 32L)
 class Session {
+    var installPlan: vegabobo.dsusideloader.loader.InstallPlan? = null
     val preferences = InstallationPreferences()
     val userSelection = Selection()
     var dsuInstallation = DSUInstallationSource()

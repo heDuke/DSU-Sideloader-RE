@@ -32,6 +32,8 @@ def method(name):
 prefix = '''package review3
 
 import android.util.Log
+import android.os.Build
+import vegabobo.dsusideloader.loader.*
 import vegabobo.dsusideloader.IPrivilegedService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*

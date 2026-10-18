@@ -33,6 +33,19 @@ class MemDir(
 class TaskWorkspacesTest {
 
     @Test
+    fun preparedZipOrGzipIsKeptUntilTerminalCleanup() {
+        for (name in listOf("verified-source.zip", "verified-source.gzip")) {
+            val root = MemDir("ws")
+            val key = TaskWorkspaces.taskKey(1, 10)
+            root.findOrCreateDirectory(key).apply { file(name); file("intermediate.img") }
+            TaskWorkspaces.clean(root, key, false, setOf(name))
+            assertEquals(listOf(name), root.dir(key)!!.names())
+            TaskWorkspaces.clean(root, key, true, setOf(name))
+            assertFalse(root.names().contains(key))
+        }
+    }
+
+    @Test
     fun taskKeysAreUniquePerTask() {
         assertNotEquals(TaskWorkspaces.taskKey(1, 100), TaskWorkspaces.taskKey(2, 100))
         assertNotEquals(TaskWorkspaces.taskKey(1, 100), TaskWorkspaces.taskKey(1, 101))
