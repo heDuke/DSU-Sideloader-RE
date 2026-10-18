@@ -1,0 +1,137 @@
+Testing source revision: 9796d2725e6eb9744f95cc685d96c3ce3110d873
+Extracted production methods: setupAdbInstallation, onConfirmInstallationSheet, onPreparationFinished, startInstallation, beginTask, ifAccepts, updateInstallationCard, onPreparationStepUnsettled, onTaskCancelledWithoutSystemChanges, startPrivilegedInstallation, onClickCancelInstallationButton, onSubmissionStepUnsettled, cancelDsuAppInstallation, finishCancelWithOutcome, onTaskFailed, onInstallationError
+warning: [options] system modules path not set in conjunction with -source 17
+1 warning
+dsu-fourth-review/HomeWiringHarness.kt:24:29: warning: parameter 'type' is never used
+    fun getExternalFilesDir(type: String?): File? = externalDirHook()
+                            ^
+dsu-fourth-review/HomeWiringHarness.kt:28:28: warning: parameter 'name' is never used
+    fun readFileFromAssets(name: String) = "#!/bin/sh\n%ACTION_INSTALL\n%UNMOUNT_SD"
+                           ^
+dsu-fourth-review/HomeWiringHarness.kt:42:28: warning: parameter 'key' is never used
+    fun cleanTaskWorkspace(key: String, all: Boolean) { onClean() }
+                           ^
+dsu-fourth-review/HomeWiringHarness.kt:42:41: warning: parameter 'all' is never used
+    fun cleanTaskWorkspace(key: String, all: Boolean) { onClean() }
+                                        ^
+dsu-fourth-review/HomeWiringHarness.kt:66:30: warning: parameter 'id' is never used
+    private fun startLogging(id: Long) {}
+                             ^
+dsu-fourth-review/HomeWiringHarness.kt:67:41: warning: parameter 'id' is never used
+    private fun remountSdCardsIfOwnedBy(id: Long, reason: String) {}
+                                        ^
+dsu-fourth-review/HomeWiringHarness.kt:67:51: warning: parameter 'reason' is never used
+    private fun remountSdCardsIfOwnedBy(id: Long, reason: String) {}
+                                                  ^
+dsu-fourth-review/HomeWiringHarness.kt:77:30: warning: parameter 'key' is never used
+    private fun readBoolPref(key: String) = false
+                             ^
+dsu-fourth-review/HomeWiringHarness.kt:78:30: warning: parameter 'step' is never used
+    private fun onStepUpdate(step: InstallationStep) {}
+                             ^
+dsu-fourth-review/HomeWiringHarness.kt:79:45: warning: parameter 'p' is never used
+    private fun onPreparationProgressUpdate(p: Float) {}
+                                            ^
+dsu-fourth-review/HomeWiringHarness.kt:80:38: warning: parameter 'id' is never used
+    private fun startDSUInstallation(id: Long) { error("unused root boundary") }
+                                     ^
+dsu-fourth-review/HomeWiringHarness.kt:132:34: warning: name shadowed: step
+                onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
+                                 ^
+dsu-fourth-review/stubs/AndroidLog.kt:3:11: warning: parameter 'tag' is never used
+    fun w(tag: String, message: String): Int = 0
+          ^
+dsu-fourth-review/stubs/AndroidLog.kt:3:24: warning: parameter 'message' is never used
+    fun w(tag: String, message: String): Int = 0
+                       ^
+dsu-fourth-review/stubs/AndroidLog.kt:4:11: warning: parameter 'tag' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+          ^
+dsu-fourth-review/stubs/AndroidLog.kt:4:24: warning: parameter 'message' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+                       ^
+dsu-fourth-review/stubs/AndroidLog.kt:4:41: warning: parameter 'error' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+                                        ^
+dsu-fourth-review/stubs/AndroidLog.kt:5:11: warning: parameter 'tag' is never used
+    fun d(tag: String, message: String): Int = 0
+          ^
+dsu-fourth-review/stubs/AndroidLog.kt:5:24: warning: parameter 'message' is never used
+    fun d(tag: String, message: String): Int = 0
+                       ^
+dsu-fourth-review/stubs/AndroidLog.kt:6:11: warning: parameter 'tag' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+          ^
+dsu-fourth-review/stubs/AndroidLog.kt:6:24: warning: parameter 'message' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+                       ^
+dsu-fourth-review/stubs/AndroidLog.kt:6:41: warning: parameter 'error' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+                                        ^
+dsu-fourth-review/stubs/Intent.kt:6:22: warning: parameter 'packageName' is never used
+    fun setClassName(packageName: String, className: String): Intent = this
+                     ^
+dsu-fourth-review/stubs/Intent.kt:6:43: warning: parameter 'className' is never used
+    fun setClassName(packageName: String, className: String): Intent = this
+                                          ^
+dsu-fourth-review/stubs/Intent.kt:7:18: warning: parameter 'name' is never used
+    fun putExtra(name: String, value: Long): Intent = this
+                 ^
+dsu-fourth-review/stubs/Intent.kt:7:32: warning: parameter 'value' is never used
+    fun putExtra(name: String, value: Long): Intent = this
+                               ^
+dsu-fourth-review/stubs/OperationModeUtils.kt:5:37: warning: parameter 'context' is never used
+    fun isReadLogsPermissionGranted(context: Any) = hook()
+                                    ^
+dsu-fourth-review/stubs/Preparation.kt:6:19: warning: parameter 'storageManager' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                  ^
+dsu-fourth-review/stubs/Preparation.kt:6:54: warning: parameter 'session' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                     ^
+dsu-fourth-review/stubs/Preparation.kt:6:72: warning: parameter 'job' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                                       ^
+dsu-fourth-review/stubs/Preparation.kt:6:82: warning: parameter 'taskKey' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                                                 ^
+dsu-fourth-review/stubs/Preparation.kt:7:5: warning: parameter 'onStepUpdate' is never used
+    onStepUpdate: (InstallationStep) -> Unit, onPreparationProgressUpdate: (Float) -> Unit,
+    ^
+dsu-fourth-review/stubs/Preparation.kt:7:47: warning: parameter 'onPreparationProgressUpdate' is never used
+    onStepUpdate: (InstallationStep) -> Unit, onPreparationProgressUpdate: (Float) -> Unit,
+                                              ^
+dsu-fourth-review/stubs/Preparation.kt:8:5: warning: parameter 'onCanceled' is never used
+    onCanceled: () -> Unit, val onPreparationFinished: (DSUInstallationSource) -> Unit) {
+    ^
+review-dsu-pr2/app/src/test/java/vegabobo/dsusideloader/installer/root/DsuInstallPipelineTest.kt:570:115: warning: no cast needed
+        fun img(name: String) = DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
+                                                                                                                  ^
+review-dsu-pr2/app/src/test/java/vegabobo/dsusideloader/installer/root/DsuInstallPipelineTest.kt:584:91: warning: no cast needed
+        DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
+                                                                                          ^
+review-dsu-pr2/app/src/test/java/vegabobo/dsusideloader/review/FourthReviewRegressionTest.kt:49:30: warning: parameter 'id' is never used
+        private fun terminal(id: Long, step: String, detail: String = "") {
+                             ^
+JUnit version 4.13.2
+..............................................................................................................................
+Time: 6.551
+
+OK (126 tests)
+
+JUnit version 4.13.2
+.FOURTH PROBE preparation cleanup: newTaskAdmitted=false newTaskFileDeleted=false
+.FOURTH PROBE submission publication: [cancel-finished-next-task=2]
+
+Time: 3.101
+
+OK (2 tests)
+
+JUnit version 4.13.2
+.FOURTH PROBE ADB storage unavailable during cancel: jobCompleted=true gateBusy=false nextTaskAdmitted=true card=ERROR_CANCELED
+
+Time: 0.159
+
+OK (1 test)
+
+At cc6aec38: expected project tests=125 passing; TR1/TR2 probes passing; exception-handoff probe reports actual behavior. These run verbatim ViewModel method fragments with substituted framework boundaries, NOT an Android ViewModel/lifecycle/Binder integration test.
