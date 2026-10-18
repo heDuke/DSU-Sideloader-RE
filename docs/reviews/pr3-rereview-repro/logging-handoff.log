@@ -1,0 +1,226 @@
+Testing source revision: 06a58212add84d605bef87091542c515bf00e093
+Extracted production methods: startLogging, refreshStorageRestorePending, showStorageRestore, querySystemDsuState, onRestoreStorage, onAcknowledgeUnconfirmed, onAcknowledgeCleanupIncomplete, onInstallationCardAction, resetInstallationCard, remountSdCardsIfOwnedBy, createRetryEntry, onClickRetryInstallation, onClickUnmountSdCardAndRetry, onClickSetSeLinuxPermissive, setupAdbInstallation, onConfirmInstallationSheet, onPreparationFinished, startInstallation, beginTask, ifAccepts, updateInstallationCard, onPreparationStepUnsettled, onTaskCancelledWithoutSystemChanges, startPrivilegedInstallation, onClickCancelInstallationButton, onSubmissionStepUnsettled, cancelDsuAppInstallation, finishCancelWithOutcome, onTaskFailed, onInstallationError
+warning: [options] system modules path not set in conjunction with -source 17
+1 warning
+pr3-rereview/logging-probes/HomeWiringHarness.kt:26:29: warning: parameter 'type' is never used
+    fun getExternalFilesDir(type: String?): File? = externalDirHook()
+                            ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:30:28: warning: parameter 'name' is never used
+    fun readFileFromAssets(name: String) = "#!/bin/sh\n%ACTION_INSTALL\n%UNMOUNT_SD"
+                           ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:44:28: warning: parameter 'key' is never used
+    fun cleanTaskWorkspace(key: String, all: Boolean) { onClean() }
+                           ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:44:41: warning: parameter 'all' is never used
+    fun cleanTaskWorkspace(key: String, all: Boolean) { onClean() }
+                                        ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:86:46: warning: parameter 'p' is never used
+    private fun onInstallationProgressUpdate(p: Float, part: String) {}
+                                             ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:86:56: warning: parameter 'part' is never used
+    private fun onInstallationProgressUpdate(p: Float, part: String) {}
+                                                       ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:88:40: warning: parameter 'id' is never used
+    private fun onTaskConfirmedSuccess(id: Long) {}
+                                       ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:90:30: warning: parameter 'step' is never used
+    private fun onStepUpdate(step: InstallationStep) {}
+                             ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:91:45: warning: parameter 'p' is never used
+    private fun onPreparationProgressUpdate(p: Float) {}
+                                            ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:92:38: warning: parameter 'id' is never used
+    private fun startDSUInstallation(id: Long) { error("unused root boundary") }
+                                     ^
+pr3-rereview/logging-probes/HomeWiringHarness.kt:301:34: warning: name shadowed: step
+                onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
+                                 ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:3:11: warning: parameter 'tag' is never used
+    fun w(tag: String, message: String): Int = 0
+          ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:3:24: warning: parameter 'message' is never used
+    fun w(tag: String, message: String): Int = 0
+                       ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:4:11: warning: parameter 'tag' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+          ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:4:24: warning: parameter 'message' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+                       ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:4:41: warning: parameter 'error' is never used
+    fun w(tag: String, message: String, error: Throwable?): Int = 0
+                                        ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:5:11: warning: parameter 'tag' is never used
+    fun d(tag: String, message: String): Int = 0
+          ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:5:24: warning: parameter 'message' is never used
+    fun d(tag: String, message: String): Int = 0
+                       ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:6:11: warning: parameter 'tag' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+          ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:6:24: warning: parameter 'message' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+                       ^
+pr3-rereview/logging-probes/stubs/AndroidLog.kt:6:41: warning: parameter 'error' is never used
+    fun e(tag: String, message: String, error: Throwable? = null): Int = 0
+                                        ^
+pr3-rereview/logging-probes/stubs/CmdRunner.kt:5:13: warning: parameter 'cmd' is never used
+    fun run(cmd: String) = ""
+            ^
+pr3-rereview/logging-probes/stubs/CmdRunner.kt:6:25: warning: parameter 'cmd' is never used
+    fun runReadEachLine(cmd: String, onReceive: (String) -> Unit) {}
+                        ^
+pr3-rereview/logging-probes/stubs/CmdRunner.kt:6:38: warning: parameter 'onReceive' is never used
+    fun runReadEachLine(cmd: String, onReceive: (String) -> Unit) {}
+                                     ^
+pr3-rereview/logging-probes/stubs/Intent.kt:6:22: warning: parameter 'packageName' is never used
+    fun setClassName(packageName: String, className: String): Intent = this
+                     ^
+pr3-rereview/logging-probes/stubs/Intent.kt:6:43: warning: parameter 'className' is never used
+    fun setClassName(packageName: String, className: String): Intent = this
+                                          ^
+pr3-rereview/logging-probes/stubs/Intent.kt:7:18: warning: parameter 'name' is never used
+    fun putExtra(name: String, value: Long): Intent = this
+                 ^
+pr3-rereview/logging-probes/stubs/Intent.kt:7:32: warning: parameter 'value' is never used
+    fun putExtra(name: String, value: Long): Intent = this
+                               ^
+pr3-rereview/logging-probes/stubs/OperationModeUtils.kt:5:37: warning: parameter 'context' is never used
+    fun isReadLogsPermissionGranted(context: Any) = hook()
+                                    ^
+pr3-rereview/logging-probes/stubs/Preparation.kt:6:19: warning: parameter 'storageManager' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                  ^
+pr3-rereview/logging-probes/stubs/Preparation.kt:6:54: warning: parameter 'session' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                     ^
+pr3-rereview/logging-probes/stubs/Preparation.kt:6:72: warning: parameter 'job' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                                       ^
+pr3-rereview/logging-probes/stubs/Preparation.kt:6:82: warning: parameter 'taskKey' is never used
+class Preparation(storageManager: WorkspaceBoundary, session: Session, job: Job, taskKey: String,
+                                                                                 ^
+pr3-rereview/logging-probes/stubs/Preparation.kt:7:5: warning: parameter 'onStepUpdate' is never used
+    onStepUpdate: (InstallationStep) -> Unit, onPreparationProgressUpdate: (Float) -> Unit,
+    ^
+pr3-rereview/logging-probes/stubs/Preparation.kt:7:47: warning: parameter 'onPreparationProgressUpdate' is never used
+    onStepUpdate: (InstallationStep) -> Unit, onPreparationProgressUpdate: (Float) -> Unit,
+                                              ^
+pr3-rereview/logging-probes/stubs/Preparation.kt:8:5: warning: parameter 'onCanceled' is never used
+    onCanceled: () -> Unit, val onPreparationFinished: (DSUInstallationSource) -> Unit) {
+    ^
+review-dsu-pr2/app/src/test/java/vegabobo/dsusideloader/installer/root/DsuInstallPipelineTest.kt:570:115: warning: no cast needed
+        fun img(name: String) = DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
+                                                                                                                  ^
+review-dsu-pr2/app/src/test/java/vegabobo/dsusideloader/installer/root/DsuInstallPipelineTest.kt:584:91: warning: no cast needed
+        DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
+                                                                                          ^
+review-dsu-pr2/app/src/test/java/vegabobo/dsusideloader/review/FourthReviewRegressionTest.kt:58:30: warning: parameter 'id' is never used
+        private fun terminal(id: Long, step: String, detail: String = "") {
+                             ^
+JUnit version 4.13.2
+......................................................................................................................................................
+Time: 8.046
+
+OK (150 tests)
+
+JUnit version 4.13.2
+.FOURTH PROBE preparation cleanup: newTaskAdmitted=false newTaskFileDeleted=false
+.FOURTH PROBE submission publication: [cancel-finished-next-task=2]
+
+Time: 3.107
+
+OK (2 tests)
+
+JUnit version 4.13.2
+.FOURTH PROBE ADB storage unavailable during cancel: jobCompleted=true gateBusy=false nextTaskAdmitted=true card=ERROR_CANCELED
+
+Time: 0.119
+
+OK (1 test)
+
+JUnit version 4.13.2
+.FIFTH duplicate terminal: cleanup exactly once, no early unlock
+.FIFTH write failure without cancel: ERROR, gate released
+.FIFTH cancel + write/cleanup failure: both error details retained, gate released, cleanup once
+.FIFTH cancel after successful write: ERROR_CANCELED, gate released, cleanup once
+
+Time: 0.145
+
+OK (4 tests)
+
+JUnit version 4.13.2
+.RETRY parameter read failure: ERROR, gate released
+.RETRY dsu app: calls=[unmount, forceStop, startActivity, forceStop] maxParallel=1 card=CANCEL_REQUESTED_CLEANUP_UNVERIFIED
+.RETRY SELinux remedy cancelled: ERROR_CANCELED after cleanup (once), gate released
+.RETRY repeated taps: one task, writes=1, ADB card, gate released
+.RETRY adb write failure: ERROR, off caller thread=DefaultDispatcher-worker-2, gate released
+
+Time: 0.551
+
+OK (5 tests)
+
+JUnit version 4.13.2
+.REVIEW history before retry: phase=SYSTEM_UNKNOWN calls=[unmount-1, forceStop, startActivity]
+REVIEW cancelled retry: card=CANCEL_REQUESTED_CLEANUP_UNVERIFIED calls=[unmount-1, forceStop, startActivity, unmount-2, forceStop] pending=PendingRemount(volumes=[public:179,1], phase=SYSTEM_UNKNOWN, bootId=7, failures={}) uncaught=[]
+.REVIEW failed retry: card=INSTALL_SUBMITTED_UNCONFIRMED calls=[unmount, forceStop, startActivity] pending=PendingRemount(volumes=[public:179,1], phase=SYSTEM_UNKNOWN, bootId=7, failures={}) uncaught=[]
+
+Time: 1.129
+
+OK (2 tests)
+
+JUnit version 4.13.2
+.HANDOFF failed retry: card=INSTALL_SUBMITTED_UNCONFIRMED detail=pending record storage unavailable calls=[unmount-1, forceStop, startActivity] pending=SYSTEM_UNKNOWN
+.HANDOFF cancelled retry: card=CANCEL_REQUESTED_CLEANUP_UNVERIFIED calls=[unmount-1, forceStop, startActivity, unmount-2, forceStop] pending=SYSTEM_UNKNOWN
+.HANDOFF none: card=ERROR_CANCELED calls=[unmount-1, mount] pending=null
+
+Time: 1.667
+
+OK (3 tests)
+
+JUnit version 4.13.2
+.RECOVERY root clean: review3.RecoveryReviewTest$Service@77ec78b9 [unmount-1, forceStop, startActivity, unmount-2, forceStop, abort, remove, mount], pending=null
+.RECOVERY ended card: pending=true; ACK -> restore prompt; explicit restore -> mount=1 pending=null
+.RECOVERY startActivity throws: unknown + error detail + restore state, mount=0
+.RECOVERY root incomplete: [unmount-1, forceStop, startActivity, unmount-2, forceStop, abort, remove], mount=0 pending=SYSTEM_UNKNOWN
+.RECOVERY explicit restore: installing blocked; idle + explicit click restores
+
+Time: 0.141
+
+OK (5 tests)
+
+JUnit version 4.13.2
+.REVIEW logging handoff: handedAtFailure=true card=ERROR calls=[unmount, forceStop, startActivity, mount] pending=null uncaught=[]
+E
+Time: 0.126
+There was 1 failure:
+1) loggingInitializationErrorAfterHandoffMustNotRemountUnconfirmedStorage(review3.LoggingHandoffReviewTest)
+java.lang.AssertionError: An app-side log initialization failure cannot confirm system installation ended expected:<0> but was:<1>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at review3.LoggingHandoffReviewTest$loggingInitializationErrorAfterHandoffMustNotRemountUnconfirmedStorage$1.invokeSuspend(LoggingHandoffReviewTest.kt:65)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.internal.ScopeCoroutine.afterResume(Scopes.kt:33)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:102)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:46)
+	at kotlinx.coroutines.DispatchedTaskKt.resume(DispatchedTask.kt:234)
+	at kotlinx.coroutines.DispatchedTaskKt.dispatch(DispatchedTask.kt:166)
+	at kotlinx.coroutines.CancellableContinuationImpl.dispatchResume(CancellableContinuationImpl.kt:397)
+	at kotlinx.coroutines.CancellableContinuationImpl.resumeImpl(CancellableContinuationImpl.kt:431)
+	at kotlinx.coroutines.CancellableContinuationImpl.resumeImpl$default(CancellableContinuationImpl.kt:420)
+	at kotlinx.coroutines.CancellableContinuationImpl.resumeUndispatched(CancellableContinuationImpl.kt:518)
+	at kotlinx.coroutines.EventLoopImplBase$DelayedResumeTask.run(EventLoop.common.kt:500)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:284)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:59)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:38)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at review3.LoggingHandoffReviewTest.loggingInitializationErrorAfterHandoffMustNotRemountUnconfirmedStorage(LoggingHandoffReviewTest.kt:23)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+Expected: all project tests, TR1/TR2, FR1, 4 fifth-review terminal probes and the retry-entry probes passing. These run verbatim ViewModel method fragments with substituted framework boundaries, NOT an Android ViewModel/lifecycle/Binder integration test.
