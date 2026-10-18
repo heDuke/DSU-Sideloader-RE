@@ -1,24 +1,17 @@
 package vegabobo.dsusideloader.ui.components
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 
+/** Native list item with the existing preference callback contract. */
 @Composable
 fun PreferenceItem(
     title: String,
@@ -34,16 +27,11 @@ fun PreferenceItem(
     } else {
         Modifier.clickable(enabled = isEnabled) { onClick(isChecked) }
     }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxWidth().then(interaction).heightIn(min = 72.dp).padding(horizontal = 20.dp, vertical = 16.dp),
-    ) {
-        if (icon != null) Icon(icon, contentDescription = null)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            if (description.isNotEmpty()) Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (showToggle) Switch(checked = isChecked, onCheckedChange = null, enabled = isEnabled)
-    }
+    ListItem(
+        modifier = interaction,
+        headlineContent = { Text(title) },
+        supportingContent = if (description.isEmpty()) null else { { Text(description) } },
+        leadingContent = if (icon == null) null else { { Icon(icon, contentDescription = null) } },
+        trailingContent = if (!showToggle) null else { { Switch(checked = isChecked, onCheckedChange = null, enabled = isEnabled) } },
+    )
 }

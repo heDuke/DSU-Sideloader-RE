@@ -18,13 +18,13 @@
 
 ## 当前设计实现
 
-- 使用 `MaterialExpressiveTheme` 和 `MotionScheme.expressive()`；配色采用成对的 primary / container / surfaceContainer 角色。品牌色为紫色与黄绿色辅助色，保留 Android 12 动态配色和浅深主题。
-- 安装页以来源选择为重点，userdata、后端、校验和高级参数为分组列表；参数编辑在 Material 3 ModalBottomSheet。底部固定一个主操作，选文件后变为查看安装方案。
-- 官方 `ShortNavigationBar` / `WideNavigationRail` 在 840dp 切换；宽屏内容双栏且主按钮限制宽度。
-- `ButtonDefaults.shapes()` 提供按钮按压形变；容量和外观使用官方连接 ToggleButton 形状；未知进度使用 LoadingIndicator，不用虚构百分比，已知进度使用 LinearWavyProgressIndicator。
-- 安装卡片保留已提交/未确认、取消/清理结果及显式恢复操作，回调保持任务归属。任务页只表示当前应用会话，没有伪造跨进程恢复。
-- 源文件查询带请求归属，迟到结果不能覆盖新选择；查询失败清空旧的可安装来源。准备失败后重试重新走准备步骤，不能拿空 URI 跳过哈希校验直接提交。
-- 新文案提供英语和简体中文；其他语言逐条局部 MissingTranslation 标记，未全局禁用 Lint。静态预览不等同于动效、无障碍或设备验收。
+- 用户要求“尽可能使用原生组件，全部 Expressive”。全局为 MaterialExpressiveTheme / MotionScheme.expressive，使用官方默认字阶和形状。
+- 按钮、图标按钮、顶栏、导航和加载使用对应 Expressive API；列表、卡片、输入、开关、单选和弹窗由同一主题下的官方 Material 3 控件提供。不混用 Material 2。
+- 来源使用 OutlinedCard，参数/镜像库/设置/许可证使用 ListItem，状态与日志使用默认 Card；删除自行绘制的外形、花形底座、拼接圆角组和镜像卡片。
+- 设置、关于、更新、ADB、日志、确认弹窗同样纳入组件统一。品牌色和动态配色仍可选，错误状态使用语义色。
+- 840dp 起官方侧栏和安装双栏，主按钮最大 480dp；保留原有任务归属、未知/未确认、取消及恢复流程。
+- 新文案为英语/简体中文，其余翻译逐条局部标记；Android Lint 的既有翻译问题没有被全局关闭。
+- 实际生产组件与原生控件对应、预览和验证边界见 [设计说明](design/EXPRESSIVE.md)。
 
 ## 后续必须完成
 

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -93,7 +94,7 @@ fun Home(
     val ready = uiState.passedInitialChecks && uiState.additionalCard == AdditionalCardState.NONE
 
     val warnings: @Composable () -> Unit = {
-        Box(modifier = Modifier.animateContentSize()) {
+        Box(modifier = Modifier.animateContentSize(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec())) {
             when (uiState.additionalCard) {
                 AdditionalCardState.NO_DYNAMIC_PARTITIONS ->
                     UnsupportedCard(
@@ -132,7 +133,7 @@ fun Home(
             CardBox(cardTitle = stringResource(R.string.installation)) {
                 LoadingIndicator()
                 Text(stringResource(R.string.re_reading_source), modifier = Modifier.padding(vertical = 12.dp))
-                FilledTonalButton(onClick = { homeViewModel.cancelSourceSelection(sourceRequestId) }) { Text(stringResource(R.string.cancel)) }
+                FilledTonalButton(shapes = ButtonDefaults.shapes(), onClick = { homeViewModel.cancelSourceSelection(sourceRequestId) }) { Text(stringResource(R.string.cancel)) }
             }
         } else {
             InstallationCard(
@@ -222,7 +223,7 @@ fun Home(
                     CardBox { Text(stringResource(R.string.re_tasks_idle)) }
                 }
                 if (uiState.installationLogs.isNotEmpty()) {
-                    FilledTonalButton(onClick = homeViewModel::showLogsWarning) { Text(stringResource(R.string.view_logs)) }
+                    FilledTonalButton(shapes = ButtonDefaults.shapes(), onClick = homeViewModel::showLogsWarning) { Text(stringResource(R.string.view_logs)) }
                     LogcatCard(logs = uiState.installationLogs)
                 }
             }

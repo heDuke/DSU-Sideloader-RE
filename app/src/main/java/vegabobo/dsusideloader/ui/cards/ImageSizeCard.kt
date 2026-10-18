@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.ui.components.CardBox
 import vegabobo.dsusideloader.ui.components.FileSelectionBox
@@ -55,8 +54,7 @@ fun ImageSizeCard(
                         modifier = Modifier.padding(start = 1.dp),
                         text = stringResource(id = R.string.not_recommended_option),
                         color = MaterialTheme.colorScheme.error,
-                        lineHeight = 14.sp,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }

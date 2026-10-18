@@ -8,7 +8,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.core.app.ActivityOptionsCompat
-import com.android.resources.ScreenOrientation
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import org.junit.Rule
@@ -17,6 +16,17 @@ import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import vegabobo.dsusideloader.loader.BackendPreference
 import vegabobo.dsusideloader.loader.SavedImage
+import androidx.compose.ui.res.stringResource
+import vegabobo.dsusideloader.R
+import vegabobo.dsusideloader.ui.components.ApplicationScreen
+import vegabobo.dsusideloader.ui.components.TopBar
+import vegabobo.dsusideloader.ui.components.PreferenceItem
+import vegabobo.dsusideloader.ui.cards.updater.UpdaterCard
+import vegabobo.dsusideloader.ui.screen.about.UpdaterCardState
+import vegabobo.dsusideloader.ui.screen.about.UpdateStatus
+import vegabobo.dsusideloader.ui.cards.installation.InstallationCard
+import vegabobo.dsusideloader.ui.screen.home.InstallationCardState
+import vegabobo.dsusideloader.preparation.InstallationStep
 import vegabobo.dsusideloader.ui.design.DashboardLayout
 import vegabobo.dsusideloader.ui.design.DashboardSection
 import vegabobo.dsusideloader.ui.design.ExpressiveInstallPane
@@ -27,6 +37,7 @@ import vegabobo.dsusideloader.ui.screen.home.UserDataCardState
 import vegabobo.dsusideloader.ui.theme.DSUHelperTheme
 
 /** Real production composables rendered by layoutlib; callbacks/registry are substitutes. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @RunWith(Parameterized::class)
 class PreviewTest(private val name: String, private val dark: Boolean, private val scale: Float, private val wide: Boolean) {
     companion object {
@@ -37,7 +48,7 @@ class PreviewTest(private val name: String, private val dark: Boolean, private v
             arrayOf<Any>("wide-light", false, 1f, true),
         )
     }
-    private val device = (if (wide) DeviceConfig.PIXEL_5.copy(screenWidth = 2560, screenHeight = 1800, orientation = ScreenOrientation.LANDSCAPE) else DeviceConfig.PIXEL_5).copy(locale = "zh-rCN")
+    private val device = (if (wide) DeviceConfig.PIXEL_5.copy(screenWidth = 2560, screenHeight = 1800) else DeviceConfig.PIXEL_5).copy(locale = "zh-rCN")
     @get:Rule val paparazzi = Paparazzi(deviceConfig = device)
     private val owner = object : ActivityResultRegistryOwner {
         override val activityResultRegistry = object : ActivityResultRegistry() {
@@ -48,6 +59,34 @@ class PreviewTest(private val name: String, private val dark: Boolean, private v
     @Test fun emptyInstall() = render(DashboardSection.OVERVIEW, false)
     @Test fun selectedInstall() = render(DashboardSection.OVERVIEW, true)
     @Test fun library() = render(DashboardSection.IMAGES, true)
+
+    @Test fun nativeComponents() = paparazzi.snapshot("$name-native-components") {
+        val density = LocalDensity.current
+        CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner, LocalDensity provides Density(density.density, scale)) {
+            DSUHelperTheme(darkTheme = dark, dynamicColor = false) {
+                ApplicationScreen(topBar = { TopBar(scrollBehavior = it, barTitle = stringResource(R.string.settings), onClickBackButton = {}) }) {
+                    PreferenceItem(title = stringResource(R.string.re_brand_colors), description = stringResource(R.string.re_brand_help), showToggle = true, isChecked = true)
+                    UpdaterCard(UpdaterCardState(updateStatus = UpdateStatus.UPDATE_FOUND, updateVersion = "2.04"), true, {}, {}, {}, {})
+                }
+            }
+        }
+    }
+
+    @Test fun activeTask() = paparazzi.snapshot("$name-active-task") {
+        val density = LocalDensity.current
+        CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner, LocalDensity provides Density(density.density, scale)) {
+            DSUHelperTheme(darkTheme = dark, dynamicColor = false) {
+                DashboardLayout(DashboardSection.TASKS, {}, {}) {
+                    InstallationCard(
+                        uiState = InstallationCardState(installationStep = InstallationStep.VERIFYING_IMAGE_INTEGRITY, isProgressBarIndeterminate = true), minPercentageOfFreeStorage = "20",
+                        onClickClear = {}, onClickInstall = {}, onClickRetryInstallation = {}, onClickUnmountSdCardAndRetry = {}, onClickSetSeLinuxPermissive = {},
+                        onClickCancelInstallation = {}, onClickDiscardInstalledGsiAndInstall = {}, onClickDiscardDsu = {}, onClickRebootToDynOS = {}, onSelectFileSuccess = {},
+                        onClickViewLogs = {}, onClickViewCommands = {}, onCardAction = {},
+                    )
+                }
+            }
+        }
+    }
 
     private fun render(section: DashboardSection, selected: Boolean) = paparazzi.snapshot("$name-${section.name.lowercase()}-$selected") {
         val density = LocalDensity.current

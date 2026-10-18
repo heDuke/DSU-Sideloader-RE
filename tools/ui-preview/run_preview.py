@@ -25,7 +25,7 @@ for path in sorted((source / 'app/src/main').rglob('*')):
     if path.is_file():
         fingerprint.update(str(path.relative_to(source)).encode())
         fingerprint.update(hashlib.sha256(path.read_bytes()).digest())
-shutil.copytree(source, work, ignore=shutil.ignore_patterns('.git', '.gradle', '.kotlin', 'build'))
+shutil.copytree(source, work, ignore=shutil.ignore_patterns('.git', '.gradle', 'build'))
 build = work / 'app/build.gradle.kts'
 build.write_text(build.read_text().replace('plugins {', 'plugins {\n    id("app.cash.paparazzi") version "1.3.5"', 1))
 test = work / 'app/src/test/java/preview/PreviewTest.kt'
@@ -38,6 +38,6 @@ for image in (work / 'app/src/test/snapshots/images').glob('*.png'):
 (args.output / 'origin.json').write_text(json.dumps({
     'head': origin, 'dirty': dirty, 'app_main_sha256': fingerprint.hexdigest(),
     'renderer': 'Paparazzi 1.3.5 / layoutlib, not an Android device',
-    'cases': 'empty install, selected install and library; phone light/dark, 200% text, wide',
+    'cases': 'empty/selected install, library, active task, native settings/about components; phone light/dark, 200% text, wide',
 }, indent=2) + '\n')
 print('Rendered images:', args.output)

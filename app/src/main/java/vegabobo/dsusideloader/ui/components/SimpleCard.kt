@@ -2,7 +2,6 @@ package vegabobo.dsusideloader.ui.components
 
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -16,7 +15,7 @@ fun SimpleCard(
     text: String = "",
     addToggle: Boolean = false,
     isToggleEnabled: Boolean = false,
-    cardColor: Color = MaterialTheme.colorScheme.inverseOnSurface,
+    cardColor: Color = Color.Unspecified,
     justifyText: Boolean = false,
     textScrollable: Boolean = false,
     addPadding: Boolean = true,
