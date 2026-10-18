@@ -739,7 +739,65 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Cancelled before anything was submitted to the system (preparation ph…738 tokens truncated…rue)
+    /** Cancelled before anything was submitted to the system (preparation phase). */
+    private fun onTaskCancelledWithoutSystemChanges(id: Long) {
+        finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, ""))
+    }
+
+    private fun finishCancelWithOutcome(id: Long, outcome: InstallOutcome) {
+        if (!taskGate.finish(id)) return
+        session.dsuInstallation = DSUInstallationSource()
+        if (outcome.step == InstallationStep.ERROR_CANCELED) {
+            remountSdCardsIfOwnedBy(id, "installation cancelled")
+        }
+        updateInstallationCard { it.copy(installationStep = outcome.step, errorText = outcome.detail) }
+    }
+
+    /**
+     * The policy follows the task's handoff state, not the caller: if a request of this task
+     * already reached the system and the error comes from our side (a retry, the submission,
+     * log/diagnostic setup, ...), the system installation is still unconfirmed. The task then
+     * ends as "submitted, unconfirmed" with this error as detail, the pending remount record
+     * (SYSTEM_UNKNOWN) is kept and storage is only restored by the explicit restore action (or
+     * the app start policy), never automatically here.
+     *
+     * [systemReported]: the error was reported by the system DSU app itself (logcat), i.e. the
+     * system installation ended; only then the normal error + remount path applies after a
+     * handoff.
+     */
+    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String, systemReported: Boolean = false) {
+        if (taskGate.isCancelling(id)) return // the cancel path reports the terminal state
+        val handedToSystem = !systemReported && taskGate.hasHandedToSystem(id)
+        if (!taskGate.finish(id)) return
+        if (handedToSystem) {
+            Log.w(tag, "Task $id: request failed after an earlier handoff to the system: $errorContent")
+            if (taskThatUnmounted == id) taskThatUnmounted = null // no automatic remount
+            updateInstallationCard {
+                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED, errorText = errorContent)
+            }
+            refreshStorageRestorePending()
+            return
+        }
+        remountSdCardsIfOwnedBy(id, "installation error: $error")
+        onInstallationError(error, errorContent)
+    }
+
+    // Only called when logs confirmed the DSU app reported completion.
+    private fun onTaskConfirmedSuccess(id: Long) {
+        if (taskGate.isCancelling(id)) return
+        if (!taskGate.finish(id)) return
+        updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS) }
+        remountSdCardsIfOwnedBy(id, "installation completed")
+    }
+
+    //
+    // Installation Card actions
+    //
+
+    fun onClickRebootToDynOS() {
+        updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
+        PrivilegedProvider.run {
+            setEnable(true, true)
             Shell.cmd("reboot").exec()
         }
     }
