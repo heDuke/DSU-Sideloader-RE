@@ -26,6 +26,8 @@ class InstallTaskGate {
         val workspaceKey: String = "",
         /** Set by [claimTerminal]: a terminal outcome of this task is being produced. */
         val terminating: Boolean = false,
+        /** The task's retry step (see [attachRetry]), if one was started. */
+        val retryJob: Job? = null,
     )
 
     private var nextId = 1L
@@ -93,6 +95,27 @@ class InstallTaskGate {
         if (current?.let { it.id == id && !it.cancelling } != true) return false
         return finish(id)
     }
+
+    /**
+     * Registers the retry step of task [id], created by [create] under the gate lock, if [id]
+     * is current, not cancelling/terminating and no earlier retry step of it is still running.
+     * Atomic against [requestCancel]: a cancel either comes first (null, nothing created) or
+     * finds the step via [retryJobOf].
+     * @return the created (not yet started) job, or null when the retry must be ignored.
+     */
+    @Synchronized
+    fun attachRetry(id: Long, create: () -> Job): Job? {
+        val task = current ?: return null
+        if (task.id != id || task.cancelling || task.terminating) return null
+        if (task.retryJob?.isCompleted == false) return null
+        val job = create()
+        current = task.copy(retryJob = job)
+        return job
+    }
+
+    /** The retry step of task [id] (running or finished), or null. */
+    @Synchronized
+    fun retryJobOf(id: Long): Job? = current?.takeIf { it.id == id }?.retryJob
 
     /** The workspace directory key of task [id], or null if [id] is not the current task. */
     @Synchronized
