@@ -431,6 +431,32 @@ class DsuInstallPipelineTest {
     }
 
     @Test
+    fun corruptSparseWithContradictoryMetadataFails() {
+        // Review P2-5 repro: header says 2 blocks, the RAW chunk claims 4 blocks, total_size
+        // and data only cover 2 blocks. Bytes written == unsparse size, yet it is corrupt.
+        val b = FakeBackend()
+        val bs = 8
+        val chunk = SparseInputStreamTest.Chunk(
+            SparseInputStreamTest.RAW,
+            4,
+            ByteArray(2 * bs) { 1 },
+            totalSize = 12 + 2 * bs,
+        )
+        val img = SparseInputStreamTest.sparse(bs, 2, listOf(chunk))
+        val src = DsuImageSource.SingleImage(DsuImageSource.Image("system", -1) { ByteArrayInputStream(img) })
+        assertFailedWithCleanup(b, run(b, src), InstallationStep.ERROR)
+        assertFalse(b.calls.contains("close:system"))
+    }
+
+    @Test
+    fun sparseCoveringFewerBlocksThanHeaderFails() {
+        val b = FakeBackend()
+        val img = SparseInputStreamTest.sparse(8, 3, listOf(SparseInputStreamTest.raw(2, 8)))
+        val src = DsuImageSource.SingleImage(DsuImageSource.Image("system", -1) { ByteArrayInputStream(img) })
+        assertFailedWithCleanup(b, run(b, src), InstallationStep.ERROR)
+    }
+
+    @Test
     fun multipleImagesRespectPolicy() {
         val b = FakeBackend()
         fun img(name: String) = DsuImageSource.Image(name, payload.size.toLong()) { ByteArrayInputStream(payload) as InputStream }
