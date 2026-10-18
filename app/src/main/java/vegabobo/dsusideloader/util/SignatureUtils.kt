@@ -30,19 +30,21 @@ private fun getSignatures(pm: PackageManager, packageName: String): List<String?
             packageName,
             PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
         )
-        if (packageInfo.signingInfo.hasMultipleSigners()) {
-            return signatureDigest(packageInfo.signingInfo.apkContentsSigners)
+        val signingInfo = packageInfo.signingInfo ?: return null
+        if (signingInfo.hasMultipleSigners()) {
+            return signatureDigest(signingInfo.apkContentsSigners)
         }
-        return signatureDigest(packageInfo.signingInfo.signingCertificateHistory)
+        return signatureDigest(signingInfo.signingCertificateHistory)
     }
 
     @Suppress("DEPRECATION")
     val packageInfo =
         pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES) ?: return null
-    if (packageInfo.signingInfo.hasMultipleSigners()) {
-        return signatureDigest(packageInfo.signingInfo.apkContentsSigners)
+    val signingInfo = packageInfo.signingInfo ?: return null
+    if (signingInfo.hasMultipleSigners()) {
+        return signatureDigest(signingInfo.apkContentsSigners)
     }
-    return signatureDigest(packageInfo.signingInfo.signingCertificateHistory)
+    return signatureDigest(signingInfo.signingCertificateHistory)
 }
 
 private fun signatureDigest(sig: Signature): String? {

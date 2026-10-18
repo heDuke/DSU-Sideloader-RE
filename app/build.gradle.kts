@@ -5,13 +5,13 @@ fun getReleaseSigningConfig(): File {
 }
 
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("kotlin-kapt")
-    id("dagger.hilt.android.plugin")
-    id("com.mikepenz.aboutlibraries.plugin")
-    id("kotlinx-serialization")
-    id("org.jmailen.kotlinter")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.aboutlibraries)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -20,7 +20,7 @@ android {
     val packageName: String by rootProject.extra
 
     namespace = packageName
-    compileSdk = 33
+    compileSdk = 35
 
     defaultConfig {
         this.applicationId = packageName
@@ -97,9 +97,6 @@ android {
         buildConfig = true
         compose = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.4.6"
-    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -116,49 +113,57 @@ kotlin.sourceSets.all {
     languageSettings.optIn("kotlin.RequiresOptIn")
 }
 
+val kotlinStyle by configurations.creating
+
 dependencies {
-    implementation(AndroidX.appCompat)
-    implementation(AndroidX.dataStore.preferences)
-
-    implementation(AndroidX.activity.compose)
-    implementation(AndroidX.lifecycle.viewModelCompose)
-    implementation(AndroidX.navigation.compose)
-    implementation(AndroidX.compose.material3)
-    implementation(AndroidX.compose.material)
-    implementation(AndroidX.compose.runtime.liveData)
-    implementation(AndroidX.compose.material.icons.extended)
-    implementation(AndroidX.compose.ui.toolingPreview)
-    implementation(AndroidX.compose.ui)
-
-    implementation(AndroidX.core.ktx)
-    implementation(AndroidX.fragment.ktx)
-    implementation(AndroidX.preference.ktx)
-    implementation(AndroidX.lifecycle.runtime.ktx)
-
-    implementation(Google.dagger.hilt.android)
-    implementation(AndroidX.hilt.navigationCompose)
-    kapt(Google.dagger.hilt.compiler)
-
-    implementation(Google.android.material)
-    implementation(KotlinX.serialization.json)
-
-    implementation("com.github.topjohnwu.libsu:core:_")
-    implementation("com.github.topjohnwu.libsu:service:_")
-
-    implementation("org.tukaani:xz:_")
-    implementation("org.apache.commons:commons-compress:_")
-
-    implementation("com.mikepenz:aboutlibraries-core:_")
-
-    implementation("dev.rikka.shizuku:api:_")
-    implementation("dev.rikka.shizuku:provider:_")
-
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:_")
-
+    implementation(libs.appcompat)
+    implementation(libs.datastore)
+    implementation(libs.activity.compose)
+    implementation(libs.viewmodel.compose)
+    implementation(libs.navigation.compose)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material)
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.livedata)
+    implementation(libs.compose.icons)
+    implementation(libs.compose.preview)
+    implementation(libs.compose.ui)
+    implementation(libs.core)
+    implementation(libs.fragment)
+    implementation(libs.preference)
+    implementation(libs.lifecycle)
+    implementation(libs.hilt.android)
+    implementation(libs.hilt.navigation)
+    kapt(libs.hilt.compiler)
+    implementation(libs.material)
+    implementation(libs.serialization)
+    implementation(libs.libsu.core)
+    implementation(libs.libsu.service)
+    implementation(libs.xz)
+    implementation(libs.compress)
+    implementation(libs.aboutlibraries)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+    implementation(libs.hiddenapi)
     compileOnly(project(":hidden-api-stub"))
-
-    testImplementation(Testing.junit4)
+    testImplementation(libs.junit)
+    kotlinStyle(libs.ktlint)
 }
 
-// Formatting is a manual step (./gradlew formatKotlin). Builds and CI only *check* style
-// (lintKotlin is part of "check"); no task run during a build or in CI rewrites sources.
+// Run the existing style engine in a separate JVM. Its Kotlin parser must not be
+// placed on the Gradle/Kotlin plugin classpath (incompatible with Kotlin 2.x).
+val lintKotlin by tasks.registering(JavaExec::class) {
+    group = "verification"
+    classpath = kotlinStyle
+    mainClass.set("com.pinterest.ktlint.Main")
+    jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+    args("src/**/*.kt")
+}
+tasks.register<JavaExec>("formatKotlin") {
+    group = "formatting"
+    classpath = kotlinStyle
+    mainClass.set("com.pinterest.ktlint.Main")
+    jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+    args("-F", "src/**/*.kt")
+}
+tasks.named("check") { dependsOn(lintKotlin) }
