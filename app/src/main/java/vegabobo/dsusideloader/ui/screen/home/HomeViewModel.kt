@@ -24,6 +24,7 @@ import vegabobo.dsusideloader.BuildConfig
 import vegabobo.dsusideloader.core.BaseViewModel
 import vegabobo.dsusideloader.core.StorageManager
 import vegabobo.dsusideloader.installer.adb.AdbInstallationHandler
+import vegabobo.dsusideloader.installer.privileged.DataStorePendingRemountStore
 import vegabobo.dsusideloader.installer.privileged.DsuInstallationHandler
 import vegabobo.dsusideloader.installer.privileged.LogcatDiagnostic
 import vegabobo.dsusideloader.installer.privileged.SdCardRemounter
@@ -60,7 +61,8 @@ class HomeViewModel @Inject constructor(
 
     var installationJob: Job = Job()
     var logger: LogcatDiagnostic? = null
-    private val sdCardRemounter = SdCardRemounter(dataStore)
+    private val sdCardRemounter =
+        SdCardRemounter(DataStorePendingRemountStore(dataStore)) { Log.d("SdCardRemounter", it) }
 
     private val allocPercentage = DevicePropUtils.getGsidBinaryAllowedPerc()
     val allocPercentageInt = String.format("%.0f", allocPercentage * 100).toInt()

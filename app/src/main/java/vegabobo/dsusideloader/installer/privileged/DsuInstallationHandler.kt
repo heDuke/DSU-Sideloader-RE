@@ -27,7 +27,7 @@ open class DsuInstallationHandler(
         PrivilegedProvider.run(onFail = { onError("Privileged service unavailable") }) {
             try {
                 if (session.preferences.isUnmountSdCard) {
-                    sdCardRemounter.unmountPublicVolumes(this)
+                    sdCardRemounter.unmountPublicVolumes(asVolumeOps())
                 }
                 forwardInstallationToDSU(this)
                 onSubmitted()
