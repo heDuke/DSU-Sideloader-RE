@@ -1,0 +1,28 @@
+# wiring-probes（重试入口接线探针）
+
+改编自 `docs/grok-handoff` 分支 `docs/reviews/pr2-fifth-review-repro/`（第五轮复审工具，提交 22fd974）。
+做法不变：把 `HomeViewModel` 中相关方法按正则**原样**抽取到 `review3.HomeWiringHarness`，
+Android 边界（Log、Session、StorageManager、PrivilegedProvider/IPrivilegedService、OperationModeUtils、libsu Shell 等）
+用 `stubs/` 替代，再与生产代码 `InstallTaskGate` / `TaskSteps` / `RetryEntry` / `DsuSubmission` 一起编译运行。
+这**不是** Android ViewModel / 生命周期 / Binder 集成测试，也不在 CI 中运行。
+
+## 运行
+
+```sh
+PATH=/path/to/jdk17/bin:$PATH python3 tools/wiring-probes/run_wiring_probes.py .
+```
+
+依赖 jar 从 Maven Central 下载到临时目录；退出码 0 表示全部通过。
+
+## 相对第五轮复审工具的改动
+
+- `extract_wiring.py`：
+  - 抽取列表中删除已移除的 `currentOrNewTask`，新增 `createRetryEntry`、`onClickRetryInstallation`、
+    `onClickUnmountSdCardAndRetry`、`onClickSetSeLinuxPermissive`；
+  - harness 前缀增加 `import com.topjohnwu.superuser.Shell`、成员 `retryEntry`（与 ViewModel 相同的 `by lazy { createRetryEntry() }`）；
+  - harness 的 `viewModelScope` 增加 `CoroutineExceptionHandler`，逃逸异常收集到 `uncaught`，探针断言其为空。
+- 新增 `stubs/Shell.kt`（libsu `Shell.cmd(...).exec()` 的可注入替身）。
+- 新增 `RetryWiringTest.kt`：重试入口探针（ADB 脚本写入失败、参数读取失败、重复点击、SELinux 补救延迟中取消且清理完成后才解锁、DSU 应用阶段重试不并行提交且取消顺序保持、下一任务可开始）。
+- `run_fifth_review.py` 重命名为 `run_wiring_probes.py`：基线增加 `RetryEntryTest`，编译并运行 `review3.RetryWiringTest`，其退出码计入总退出码。
+- 未提交生成文件 `HomeWiringHarness.kt` 与 `results.log`（每次运行时重新生成/输出）。
+- `FourthReviewWiringTest.kt`、`FifthReviewWiringTest.kt` 及其余 stubs 与原工具一致。
