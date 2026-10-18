@@ -258,7 +258,13 @@ class SdCardRemounter(
         failed
     }
 
-    /** @return null when the volume is (confirmed or assumed) mounted, else the failure reason. */
+    /**
+     * mount() is a void request: success is only what the volume state confirms within the
+     * verification window ([verifyAttempts] x [verifyDelayMs], 3 s by default). An unknown
+     * state (null or a failing query) is never treated as success; the volume stays pending
+     * with the reason and is cleared later once a query confirms it mounted or gone.
+     * @return null when the volume is confirmed mounted, else the reason it stays pending.
+     */
     private suspend fun mountAndVerify(ops: VolumeOps, id: String): String? {
         if (runCatching { ops.isMounted(id) }.getOrNull() == true) return null
         try {
@@ -266,18 +272,20 @@ class SdCardRemounter(
         } catch (e: Exception) {
             return e.toString()
         }
+        var unknownReason: String? = null
         repeat(verifyAttempts) { attempt ->
-            when (runCatching { ops.isMounted(id) }.getOrNull()) {
-                true -> return null
-                // State not readable: the mount call succeeded, accept it but note it.
-                null -> {
-                    log("Mounted state of $id can't be verified, trusting mount() result")
-                    return null
-                }
-                false -> if (attempt < verifyAttempts - 1) kotlinx.coroutines.delay(verifyDelayMs)
+            val state = runCatching { ops.isMounted(id) }
+            when {
+                state.getOrNull() == true -> return null
+                state.isFailure -> unknownReason = "state query failed: ${state.exceptionOrNull()}"
+                state.getOrNull() == null -> unknownReason = "state not available"
+                else -> unknownReason = null // known: not mounted (yet)
             }
+            if (attempt < verifyAttempts - 1) kotlinx.coroutines.delay(verifyDelayMs)
         }
-        return "mount() returned but volume is still not mounted"
+        val window = verifyAttempts * verifyDelayMs
+        return unknownReason?.let { "mount() returned but the mounted state could not be confirmed ($it)" }
+            ?: "mount() returned but volume is still not mounted after $window ms"
     }
 
     /** Drops pending volumes that are confirmed mounted or confirmed gone, without mounting. */

@@ -69,6 +69,9 @@ class SdCardRemounterTest {
             if (id in failUnmount) throw IllegalStateException("unmount failed")
             unmounted += id
         }
+
+        // Known state: mounted once mount() succeeded (unknown state is never success, RR4).
+        override fun isMounted(id: String) = id in mounted
     }
 
     @Test
@@ -76,7 +79,7 @@ class SdCardRemounterTest {
         // Review P2-4 repro: a failed mount used to clear the record, so it was never retried.
         val store = MemoryStore(listOf("public:179,1", "public:8,1"))
         val ops = FakeOps(mutableListOf("private", "public:179,1", "public:8,1"), failMount = setOf("public:8,1"))
-        val remounter = SdCardRemounter(store)
+        val remounter = SdCardRemounter(store, verifyDelayMs = 1)
 
         assertEquals(listOf("public:8,1"), remounter.remountPending(ops, "test"))
         assertEquals(listOf("public:179,1"), ops.mounted)
@@ -92,7 +95,7 @@ class SdCardRemounterTest {
     @Test
     fun goneVolumesAreForgottenAndListFailureKeepsRecord() = kotlinx.coroutines.runBlocking {
         val store = MemoryStore(listOf("public:1,1"))
-        val remounter = SdCardRemounter(store)
+        val remounter = SdCardRemounter(store, verifyDelayMs = 1)
         val broken = object : VolumeOps {
             override fun volumeIds(): List<String> = throw IllegalStateException("binder died")
             override fun mount(id: String) = Unit
@@ -109,7 +112,7 @@ class SdCardRemounterTest {
     fun unmountPersistsOnlySuccessfullyUnmountedPublicVolumes() = kotlinx.coroutines.runBlocking {
         val store = MemoryStore()
         val ops = FakeOps(mutableListOf("private", "public:1,1", "public:2,1"), failUnmount = setOf("public:2,1"))
-        val result = SdCardRemounter(store).unmountPublicVolumes(ops)
+        val result = SdCardRemounter(store, verifyDelayMs = 1).unmountPublicVolumes(ops)
         assertEquals(listOf("public:1,1"), result)
         assertEquals(listOf("public:1,1"), store.ids)
     }
@@ -121,7 +124,7 @@ class SdCardRemounterTest {
         val store = MemoryStore()
         val ops = FakeOps(mutableListOf("private", "public:179,1"))
         // Task: unmount, hand over to the system DSU app, user leaves (no terminal outcome).
-        SdCardRemounter(store).run {
+        SdCardRemounter(store, verifyDelayMs = 1).run {
             unmountPublicVolumes(ops, bootId = "7")
             markHandedToSystem()
         }
@@ -129,7 +132,7 @@ class SdCardRemounterTest {
 
         // App reopened (new remounter instance, same boot), with and without a gsid probe.
         for (state in SystemDsuState.values()) {
-            val d = SdCardRemounter(store).onAppStart(ops, "7", state)
+            val d = SdCardRemounter(store, verifyDelayMs = 1).onAppStart(ops, "7", state)
             assertEquals(AppStartDecision.Prompt(state), d)
         }
         assertEquals(emptyList<String>(), ops.mounted)
@@ -162,7 +165,7 @@ class SdCardRemounterTest {
         for (state in listOf(SystemDsuState.INSTALLING, SystemDsuState.UNKNOWN)) {
             val store = MemoryStore(listOf("public:1,1"), RemountPhase.SYSTEM_UNKNOWN, "7")
             val ops = FakeOps(mutableListOf("public:1,1"))
-            assertEquals(AppStartDecision.Prompt(state), SdCardRemounter(store).onAppStart(ops, "8", state))
+            assertEquals(AppStartDecision.Prompt(state), SdCardRemounter(store, verifyDelayMs = 1).onAppStart(ops, "8", state))
             assertEquals(emptyList<String>(), ops.mounted)
             assertEquals(listOf("public:1,1"), store.ids)
         }
@@ -178,7 +181,7 @@ class SdCardRemounterTest {
     fun appStartClearsConfirmedMountedOrGoneVolumesWithoutMounting() = kotlinx.coroutines.runBlocking {
         val store = MemoryStore(listOf("public:1,1", "public:2,1", "public:3,1"), RemountPhase.SYSTEM_UNKNOWN, "7")
         val ops = StatefulOps(listOf("public:1,1", "public:2,1")).apply { state["public:1,1"] = true }
-        val d = SdCardRemounter(store).onAppStart(ops, "8", SystemDsuState.INSTALLING)
+        val d = SdCardRemounter(store, verifyDelayMs = 1).onAppStart(ops, "8", SystemDsuState.INSTALLING)
         assertEquals(AppStartDecision.Prompt(SystemDsuState.INSTALLING), d)
         assertEquals(emptyList<String>(), ops.mountCalls)
         assertEquals(listOf("public:2,1"), store.ids) // 1 mounted, 3 gone -> cleared
@@ -244,7 +247,7 @@ class SdCardRemounterTest {
     fun alreadyMountedVolumeIsConfirmedWithoutMountCall() = kotlinx.coroutines.runBlocking {
         val store = MemoryStore(listOf("public:1,1"))
         val ops = StatefulOps(listOf("public:1,1")).apply { state["public:1,1"] = true }
-        assertEquals(emptyList<String>(), SdCardRemounter(store).remountPending(ops, "test"))
+        assertEquals(emptyList<String>(), SdCardRemounter(store, verifyDelayMs = 1).remountPending(ops, "test"))
         assertEquals(emptyList<String>(), ops.mountCalls)
         assertEquals(emptyList<String>(), store.ids)
     }
@@ -260,5 +263,70 @@ class SdCardRemounterTest {
         val back = PendingSdVolumes.decodeRecord(PendingSdVolumes.encodeRecord(r))!!
         assertEquals(mapOf("public:2,1" to "vold busy line2"), back.failures)
         assertEquals(r.volumes, back.volumes)
+    }
+
+    // --- Review RR4: unknown mount state keeps the record ---
+
+    private class UnknownStateOps(val query: (String) -> Boolean?) : VolumeOps {
+        val mountCalls = mutableListOf<String>()
+        override fun volumeIds() = listOf("public:179,1")
+        override fun mount(id: String) {
+            mountCalls += id
+        }
+        override fun unmount(id: String) = Unit
+        override fun isMounted(id: String) = query(id)
+    }
+
+    @Test
+    fun unknownStateAfterMountKeepsRecord() = kotlinx.coroutines.runBlocking {
+        val cases = mapOf<String, (String) -> Boolean?>(
+            "state not available" to { null },
+            "state query failed" to { throw IllegalStateException("status query temporarily unavailable") },
+        )
+        for ((reason, query) in cases) {
+            val store = MemoryStore(listOf("public:179,1"), RemountPhase.SYSTEM_UNKNOWN, "7")
+            val ops = UnknownStateOps(query)
+            val remaining = SdCardRemounter(store, verifyAttempts = 3, verifyDelayMs = 1).remountPending(ops, "t")
+            assertEquals(listOf("public:179,1"), remaining)
+            assertEquals(listOf("public:179,1"), store.ids)
+            assertTrue(store.failures["public:179,1"]!!.contains("could not be confirmed ($reason"))
+            assertEquals(listOf("public:179,1"), ops.mountCalls)
+        }
+    }
+
+    @Test
+    fun verifyTimeoutKeepsRecordAndLaterConfirmationClearsIt() = kotlinx.coroutines.runBlocking {
+        val store = MemoryStore(listOf("public:179,1"))
+        var mounted = false
+        val ops = UnknownStateOps { mounted }
+        val remounter = SdCardRemounter(store, verifyAttempts = 6, verifyDelayMs = 5)
+        val t0 = System.nanoTime()
+        assertEquals(listOf("public:179,1"), remounter.remountPending(ops, "t"))
+        assertTrue("polls the whole window", (System.nanoTime() - t0) / 1_000_000 >= 25)
+        assertTrue(store.failures["public:179,1"]!!.contains("still not mounted after 30 ms"))
+
+        // Mount completes late: the next attempt confirms it without another mount() call.
+        mounted = true
+        assertEquals(emptyList<String>(), remounter.remountPending(ops, "retry"))
+        assertEquals(listOf("public:179,1"), ops.mountCalls)
+        assertEquals(emptyList<String>(), store.ids)
+    }
+
+    @Test
+    fun stateBecomingMountedWithinWindowIsSuccess() = kotlinx.coroutines.runBlocking {
+        val store = MemoryStore(listOf("public:179,1"))
+        var queries = 0
+        val ops = UnknownStateOps { if (++queries >= 4) true else if (queries == 2) null else false }
+        assertEquals(emptyList<String>(), SdCardRemounter(store, verifyAttempts = 6, verifyDelayMs = 1).remountPending(ops, "t"))
+        assertEquals(emptyList<String>(), store.ids)
+    }
+
+    @Test
+    fun defaultVerificationWindowIsThreeSeconds() {
+        // Guard the documented window (6 x 500 ms) used by the app.
+        val r = SdCardRemounter(MemoryStore())
+        val f = SdCardRemounter::class.java.getDeclaredField("verifyAttempts").apply { isAccessible = true }
+        val d = SdCardRemounter::class.java.getDeclaredField("verifyDelayMs").apply { isAccessible = true }
+        assertEquals(3000L, (f.get(r) as Int) * (d.get(r) as Long))
     }
 }
