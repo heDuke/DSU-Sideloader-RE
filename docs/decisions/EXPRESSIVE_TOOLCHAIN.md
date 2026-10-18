@@ -5,7 +5,7 @@
 | 组件 | 版本 |
 | --- | --- |
 | JDK / Gradle | 17 / 8.9（wrapper 校验 SHA-256） |
-| Android Gradle Plugin | 8.7.3 |
+| Android Gradle Plugin / Android Lint | 8.7.3 / 8.8.2 |
 | Kotlin / Compose compiler plugin | 2.1.21 |
 | Compose UI / Material 2 兼容组件 | 1.8.2 |
 | Compose Runtime | 1.9.0 |
@@ -27,3 +27,5 @@ compileSdk 35 将 SigningInfo 标记为可空；签名读取遇到 null 返回�
 本地构建和纯 JVM 测试证明编译/测试情况，不证明 Android 10、真实 DSU 或运行时动画已验收。无 KVM，不启动模拟器。
 
 验证：`lintKotlin`、`testDebugUnitTest`（165 项，0 失败）、`assembleDebug`、`assembleMiniDebug` 通过；`formatKotlin` 后再次 `lintKotlin` 通过。新工具链仍有旧 API 弃用提示。Android Lint 和设备行为另行记录，不将其列为通过。
+
+Compose Runtime 1.9 附带的 Lint 检查要求 Lint 8.8.2；AGP 8.7 默认版本会让 FrequentlyChangingValue 检查器崩溃。按 [官方说明](https://developer.android.com/jetpack/androidx/releases/compose-runtime)，在 gradle.properties 单独固定 `android.experimental.lint.version=8.8.2`，保持 AGP 不变。未禁用检查器或压制该崩溃。
