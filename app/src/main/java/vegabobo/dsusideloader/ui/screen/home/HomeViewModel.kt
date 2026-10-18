@@ -26,6 +26,7 @@ import vegabobo.dsusideloader.BuildConfig
 import vegabobo.dsusideloader.IPrivilegedService
 import vegabobo.dsusideloader.core.BaseViewModel
 import vegabobo.dsusideloader.core.StorageManager
+import vegabobo.dsusideloader.core.TaskWorkspaces
 import vegabobo.dsusideloader.installer.adb.AdbInstallationHandler
 import vegabobo.dsusideloader.installer.privileged.DataStorePendingRemountStore
 import vegabobo.dsusideloader.installer.privileged.DsuInstallationHandler
@@ -332,7 +333,9 @@ class HomeViewModel @Inject constructor(
 
     /** Starts a new task, or returns null if one is still running/cleaning up. */
     private fun beginTask(): Long? {
-        val id = taskGate.begin()
+        // Each task gets its own workspace directory (TaskWorkspaces), so the cleanup of one
+        // task can never delete files of another.
+        val id = taskGate.begin { TaskWorkspaces.taskKey(it, System.currentTimeMillis()) }
         if (id == null) {
             Log.w(tag, "Installation task still running or cleaning up: ${taskGate.current()}")
             return null
@@ -352,6 +355,7 @@ class HomeViewModel @Inject constructor(
         val id = beginTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
         val job = installationJob
+        val taskKey = taskGate.workspaceOf(id) ?: return
         // The whole entry (preference reads included) is one task step: if it is cancelled
         // before it starts, while suspended in a preference read, or fails anywhere, the
         // completion fallback produces exactly one terminal outcome and releases the task.
@@ -370,6 +374,7 @@ class HomeViewModel @Inject constructor(
                 storageManager = storageManager,
                 session = session,
                 job = job,
+                taskKey = taskKey,
                 onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
                 onPreparationProgressUpdate = { p -> ifAccepts(id) { onPreparationProgressUpdate(p) } },
                 onCanceled = { if (step.settle()) onPreparationStepUnsettled(id, CancellationException("preparation cancelled")) },
@@ -378,18 +383,33 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Terminal outcome of a preparation step that did not hand the task over. */
+    /**
+     * Terminal outcome of a preparation step that did not hand the task over.
+     *
+     * The task's own workspace directory is cleaned first (off the caller thread: a
+     * cancel-before-start completes synchronously in the cancelling thread) and the task is
+     * released only after the cleanup finished, so a next task can't start while it runs; a
+     * cleanup failure is part of the reported result.
+     */
     private fun onPreparationStepUnsettled(id: Long, cause: Throwable?) {
-        // Don't leave partially decompressed/compressed files behind (off the caller thread:
-        // a cancel-before-start completes synchronously in the cancelling thread).
-        viewModelScope.launch(Dispatchers.IO) { runCatching { storageManager.cleanWorkspaceFolder(true) } }
-        if (cause is CancellationException || taskGate.isCancelling(id)) {
-            onTaskCancelledWithoutSystemChanges(id)
-            return
+        val taskKey = taskGate.workspaceOf(id) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val cleanupError = runCatching { storageManager.cleanTaskWorkspace(taskKey, true) }.exceptionOrNull()
+            if (cleanupError != null) Log.w(tag, "Workspace cleanup of task $id failed", cleanupError)
+            val cleanupNote = cleanupError?.let { "Temporary files could not be removed: ${it.message ?: it}" }
+            if (cause is CancellationException || taskGate.isCancelling(id)) {
+                finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, cleanupNote ?: ""))
+                return@launch
+            }
+            // Unsupported/corrupt/truncated input, I/O, preference or storage errors. Finished
+            // directly (not via onTaskFailed): a cancel that arrives now must not leave the
+            // task unfinished, nobody else would report it.
+            Log.e(tag, "Preparation failed", cause)
+            val message = cause?.message ?: cause?.toString() ?: "Preparation ended without a result"
+            if (!taskGate.finish(id)) return@launch
+            remountSdCardsIfOwnedBy(id, "preparation error")
+            onInstallationError(InstallationStep.ERROR, listOfNotNull(message, cleanupNote).joinToString("\n"))
         }
-        // Unsupported/corrupt/truncated input, I/O, preference or storage errors.
-        Log.e(tag, "Preparation failed", cause)
-        onTaskFailed(id, InstallationStep.ERROR, cause?.message ?: cause?.toString() ?: "Preparation ended without a result")
     }
 
     private fun onPreparationFinished(id: Long, dsuInstallation: DSUInstallationSource) {

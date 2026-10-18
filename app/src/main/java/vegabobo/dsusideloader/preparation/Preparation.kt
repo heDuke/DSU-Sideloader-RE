@@ -13,6 +13,8 @@ class Preparation(
     private val storageManager: StorageManager,
     private val session: Session,
     private val job: Job,
+    /** Workspace directory owned by this task (see TaskWorkspaces); nothing else is written. */
+    private val taskKey: String,
     private val onStepUpdate: (step: InstallationStep) -> Unit,
     private val onPreparationProgressUpdate: (progress: Float) -> Unit,
     private val onCanceled: () -> Unit,
@@ -23,6 +25,12 @@ class Preparation(
     private val userSelectedFileUri = session.userSelection.selectedFileUri
 
     override fun invoke() {
+        // Only the current task can be preparing (task gate), so leftovers of earlier tasks
+        // and of the old flat layout can be removed (best effort).
+        val stale = runCatching { storageManager.removeStaleWorkspaces(taskKey) }
+        if (stale.getOrNull()?.isNotEmpty() != false) {
+            Log.w("Preparation", "Could not remove stale workspace entries: ${stale.getOrNull() ?: stale.exceptionOrNull()}")
+        }
         if (session.preferences.useBuiltinInstaller && session.isRoot()) {
             prepareRooted()
             return
@@ -60,7 +68,7 @@ class Preparation(
     }
 
     private fun prepareForDSU() {
-        storageManager.cleanWorkspaceFolder(true)
+        storageManager.cleanTaskWorkspace(taskKey, true)
         val fileExtension = getExtension(userSelectedFileUri)
         val preparedFilePair =
             when (fileExtension) {
@@ -82,7 +90,10 @@ class Preparation(
 
         onStepUpdate(InstallationStep.WAITING_USER_CONFIRMATION)
 
-        storageManager.cleanWorkspaceFolder(job.isCancelled)
+        // Intermediate files only (the prepared .gz is kept for the DSU app); a failed delete is
+        // not fatal here, the cancel/failure path and the next task clean again.
+        runCatching { storageManager.cleanTaskWorkspace(taskKey, job.isCancelled) }
+            .onFailure { Log.w("Preparation", "Workspace cleanup failed", it) }
 
         if (!job.isCancelled) {
             onPreparationFinished(source)
@@ -103,6 +114,7 @@ class Preparation(
             storageManager,
             xzFile,
             outputFile,
+            taskKey,
             job,
             onPreparationProgressUpdate,
         ).unpack()
@@ -116,6 +128,7 @@ class Preparation(
             storageManager,
             imageFile,
             outputFile,
+            taskKey,
             job,
             onPreparationProgressUpdate,
         ).pack()
@@ -159,6 +172,7 @@ class Preparation(
             storageManager,
             uri,
             "$partitionName.img",
+            taskKey,
             job,
             onPreparationProgressUpdate,
         ).unpack()
@@ -166,7 +180,7 @@ class Preparation(
 
     private fun getSafeUri(uri: Uri): Uri {
         onStepUpdate(InstallationStep.COPYING_FILE)
-        return storageManager.getUriSafe(uri)
+        return storageManager.getUriSafe(uri, taskKey)
     }
 
     private fun getFileName(uri: Uri): String {

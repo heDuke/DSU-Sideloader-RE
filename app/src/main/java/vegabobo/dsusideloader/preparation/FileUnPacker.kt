@@ -15,6 +15,8 @@ class FileUnPacker(
     private val storageManager: StorageManager,
     private val inputFile: Uri,
     private val outputFile: String,
+    /** Workspace directory of the task this unpacker works for. */
+    private val taskKey: String,
     private val installationJob: Job,
     private val onProgressChange: (Float) -> Unit,
 ) {
@@ -45,7 +47,7 @@ class FileUnPacker(
     }
 
     fun pack(): Pair<Uri, Long> {
-        val finalFile = storageManager.createDocumentFile(outputFile)
+        val finalFile = storageManager.createDocumentFile(outputFile, taskKey)
         storageManager.openInputStream(inputFile).use { input ->
             GzipCompressorOutputStream(storageManager.openOutputStream(finalFile.uri)).use { output ->
                 copy(input, output) { updateProgress(inputFileSize, it) }
@@ -60,7 +62,7 @@ class FileUnPacker(
         if (!name.endsWith("xz") && !name.endsWith("gz") && !name.endsWith("gzip")) {
             throw IllegalArgumentException("File type not supported: $name")
         }
-        val finalFile = storageManager.createDocumentFile(outputFile)
+        val finalFile = storageManager.createDocumentFile(outputFile, taskKey)
         storageManager.openInputStream(inputFile).use { raw ->
             val archive: InputStream = when {
                 name.endsWith("xz") -> XZCompressorInputStream(raw, true)

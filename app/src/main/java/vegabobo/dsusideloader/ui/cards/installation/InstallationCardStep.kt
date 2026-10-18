@@ -185,7 +185,10 @@ fun InstallationCardStep(
             )
         InstallationStep.ERROR_CANCELED ->
             ProgressableCardContent(
-                text = stringResource(R.string.installation_canceled),
+                // A detail is only set when something went wrong while cancelling (e.g. the
+                // temporary files could not be removed).
+                text = stringResource(R.string.installation_canceled) +
+                    if (uiState.errorText.isNotBlank()) "\n${uiState.errorText}" else "",
                 textFirstButton = stringResource(id = R.string.view_logs),
                 onClickFirstButton = onClickViewLogs,
                 textSecondButton = stringResource(id = R.string.mreturn),

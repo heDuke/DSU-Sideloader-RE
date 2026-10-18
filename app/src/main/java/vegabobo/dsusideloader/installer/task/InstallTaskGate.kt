@@ -1,5 +1,7 @@
 package vegabobo.dsusideloader.installer.task
 
+import kotlinx.coroutines.Job
+
 /**
  * Minimal installation task mutex (not a full engine): at most one task exists, each task
  * has an id, and callbacks of a task that is no longer current are ignored.
@@ -7,21 +9,32 @@ package vegabobo.dsusideloader.installer.task
  * A task stays current through cancellation and cleanup; only [finish] (called once the
  * terminal result, including cleanup, is known) releases it, so a new installation can't
  * start while the previous one is still aborting/removing.
+ *
+ * Each task owns its [Job] and workspace directory key: code working for task `id` must get
+ * them via [jobOf]/[workspaceOf] (null once the task is no longer current) and never through
+ * a shared, mutable "current job" field that a later task could have replaced.
  */
 class InstallTaskGate {
 
     enum class Phase { PREPARING, ROOT_INSTALL, DSU_APP }
 
-    data class Task(val id: Long, val phase: Phase, val cancelling: Boolean)
+    data class Task(
+        val id: Long,
+        val phase: Phase,
+        val cancelling: Boolean,
+        val job: Job = Job(),
+        val workspaceKey: String = "",
+    )
 
     private var nextId = 1L
     private var current: Task? = null
 
     /** @return id of the new task, or null while another task (incl. cleanup) is running. */
     @Synchronized
-    fun begin(phase: Phase = Phase.PREPARING): Long? {
+    fun begin(phase: Phase = Phase.PREPARING, workspaceKey: (id: Long) -> String = { "" }): Long? {
         if (current != null) return null
-        val task = Task(nextId++, phase, cancelling = false)
+        val id = nextId++
+        val task = Task(id, phase, cancelling = false, job = Job(), workspaceKey = workspaceKey(id))
         current = task
         return task.id
     }
@@ -39,11 +52,25 @@ class InstallTaskGate {
     @Synchronized
     fun acceptsUpdates(id: Long): Boolean = current?.let { it.id == id && !it.cancelling } ?: false
 
+    /** The Job of task [id], or null if [id] is not the current task. */
     @Synchronized
-    fun setPhase(id: Long, phase: Phase): Boolean {
+    fun jobOf(id: Long): Job? = current?.takeIf { it.id == id }?.job
+
+    /** The workspace directory key of task [id], or null if [id] is not the current task. */
+    @Synchronized
+    fun workspaceOf(id: Long): String? = current?.takeIf { it.id == id }?.workspaceKey
+
+    /**
+     * Switches task [id] to [phase] if it is current and not cancelling. [onSwitched] runs
+     * under the gate lock, atomically with the switch: a concurrent [requestCancel] either
+     * happens before (switch refused) or observes everything [onSwitched] published.
+     */
+    @Synchronized
+    fun setPhase(id: Long, phase: Phase, onSwitched: () -> Unit = {}): Boolean {
         val task = current ?: return false
         if (task.id != id || task.cancelling) return false
         current = task.copy(phase = phase)
+        onSwitched()
         return true
     }
 
@@ -66,8 +93,11 @@ class InstallTaskGate {
     /** Releases [id]. @return false for a stale task (its terminal callback must be ignored). */
     @Synchronized
     fun finish(id: Long): Boolean {
-        if (current?.id != id) return false
+        val task = current ?: return false
+        if (task.id != id) return false
         current = null
+        // Nothing may keep running on behalf of a finished task.
+        task.job.cancel()
         return true
     }
 }
