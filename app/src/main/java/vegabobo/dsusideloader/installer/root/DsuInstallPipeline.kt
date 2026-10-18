@@ -84,6 +84,7 @@ class DsuInstallPipeline(
     private val listener: Listener = Listener.NONE,
     private val log: (String) -> Unit = {},
     private val progressPollIntervalMs: Long = 100,
+    private val zipStreamFactory: (InputStream) -> ZipInputStream = { ZipInputStream(it) },
 ) {
 
     interface Listener {
@@ -261,8 +262,9 @@ class DsuInstallPipeline(
     }
 
     private fun installZip(open: () -> InputStream) {
-        open().use { raw ->
-            val zis = ZipInputStream(raw)
+        // use{} on the ZipInputStream itself so its Inflater is released deterministically
+        // (closing it also closes the underlying stream), on success and on every failure.
+        zipStreamFactory(open()).use { zis ->
             val tracker = DsuPartitionPolicy.Tracker()
             var installed = 0
             while (true) {

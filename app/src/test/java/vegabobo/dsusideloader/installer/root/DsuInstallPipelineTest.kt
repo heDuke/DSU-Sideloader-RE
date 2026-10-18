@@ -353,6 +353,46 @@ class DsuInstallPipelineTest {
         assertEquals(40, b.written["system"]!!.size())
     }
 
+    private class TrackingZipInputStream(input: InputStream) : java.util.zip.ZipInputStream(input) {
+        var closed = false
+        override fun close() {
+            closed = true
+            super.close()
+        }
+    }
+
+    private fun runZipTracking(b: FakeBackend, data: ByteArray): Pair<DsuInstallResult, TrackingZipInputStream> {
+        var zis: TrackingZipInputStream? = null
+        val r = DsuInstallPipeline(
+            b,
+            1024,
+            DsuImageSource.ZipPackage { ByteArrayInputStream(data) },
+            { false },
+            progressPollIntervalMs = 5,
+            zipStreamFactory = { TrackingZipInputStream(it).also { s -> zis = s } },
+        ).run()
+        return r to zis!!
+    }
+
+    @Test
+    fun zipInputStreamClosedOnSuccess() {
+        // Review P2-6: the ZipInputStream (and its Inflater) must be closed, not only the raw stream.
+        val (r, zis) = runZipTracking(FakeBackend(), zip("system.img" to payload))
+        assertEquals(DsuInstallResult.Success, r)
+        assertTrue(zis.closed)
+    }
+
+    @Test
+    fun zipInputStreamClosedOnFailure() {
+        val b = FakeBackend().apply { submitOk = { false } }
+        val (r, zis) = runZipTracking(b, zip("system.img" to payload))
+        assertTrue(r is DsuInstallResult.Failed)
+        assertTrue(zis.closed)
+        val (r2, zis2) = runZipTracking(FakeBackend(), zip("../system.img" to payload))
+        assertTrue(r2 is DsuInstallResult.Failed)
+        assertTrue(zis2.closed)
+    }
+
     @Test
     fun truncatedZipFails() {
         val b = FakeBackend()
