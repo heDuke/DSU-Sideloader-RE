@@ -106,6 +106,7 @@
     <string name="cancel_installation_description">All progress made will be lost, are you sure?</string>
 
     <!-- Installation finished card -->
+    <string name="installation_submitted_unconfirmed">Installation request sent to the DSU system app. Without the READ_LOGS permission its progress and result cannot be confirmed here; follow the DSU notification to check whether it finished.</string>
     <string name="installation_finished_rootless">Image installed successfully, check your notifications to boot into dynamic system.</string>
     <string name="installation_finished">Installation finished.</string>
     <string name="reboot_into_dsu">Reboot into DSU</string>

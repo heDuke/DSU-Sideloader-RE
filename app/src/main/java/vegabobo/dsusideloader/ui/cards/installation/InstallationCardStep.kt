@@ -183,7 +183,7 @@ fun InstallationCardStep(
             )
         InstallationStep.ERROR_CREATE_PARTITION ->
             ProgressableCardContent(
-                text = stringResource(R.string.failed_create_partition),
+                text = stringResource(R.string.failed_create_partition, uiState.errorText),
                 textSecondButton = stringResource(id = R.string.mreturn),
                 onClickSecondButton = onClickClear,
             )
@@ -238,6 +238,12 @@ fun InstallationCardStep(
                 text = stringResource(R.string.selinux_error_description),
                 textFirstButton = stringResource(id = R.string.view_logs),
                 onClickFirstButton = onClickViewLogs,
+                textSecondButton = stringResource(id = R.string.mreturn),
+                onClickSecondButton = onClickClear,
+            )
+        InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED ->
+            ProgressableCardContent(
+                text = stringResource(R.string.installation_submitted_unconfirmed),
                 textSecondButton = stringResource(id = R.string.mreturn),
                 onClickSecondButton = onClickClear,
             )

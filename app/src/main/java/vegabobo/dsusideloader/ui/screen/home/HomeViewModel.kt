@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ import vegabobo.dsusideloader.core.StorageManager
 import vegabobo.dsusideloader.installer.adb.AdbInstallationHandler
 import vegabobo.dsusideloader.installer.privileged.DsuInstallationHandler
 import vegabobo.dsusideloader.installer.privileged.LogcatDiagnostic
+import vegabobo.dsusideloader.installer.privileged.SdCardRemounter
 import vegabobo.dsusideloader.installer.root.DSUInstaller
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
@@ -58,6 +60,7 @@ class HomeViewModel @Inject constructor(
 
     var installationJob: Job = Job()
     var logger: LogcatDiagnostic? = null
+    private val sdCardRemounter = SdCardRemounter(dataStore)
 
     private val allocPercentage = DevicePropUtils.getGsidBinaryAllowedPerc()
     val allocPercentageInt = String.format("%.0f", allocPercentage * 100).toInt()
@@ -85,13 +88,22 @@ class HomeViewModel @Inject constructor(
     private fun updateSheetState(sheetDisplay: SheetDisplayState) =
         _uiState.update { it.copy(sheetDisplay = sheetDisplay) }
 
-    fun resetInstallationCard() =
+    fun resetInstallationCard() {
         _uiState.update {
             it.copy(
                 installationCard = InstallationCardState(),
                 sheetDisplay = SheetDisplayState.NONE,
             )
         }
+        // Leaving any installation state ends the installation from our point of view.
+        remountSdCards("installation card reset")
+    }
+
+    private fun remountSdCards(reason: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            sdCardRemounter.remountPendingIfAny(reason)
+        }
+    }
 
     fun dismissSheet() = updateSheetState(SheetDisplayState.NONE)
 
@@ -100,6 +112,9 @@ class HomeViewModel @Inject constructor(
     //
 
     init {
+        // Volumes left unmounted by a previous process (e.g. killed mid-installation).
+        remountSdCards("app start")
+
         // Check if a DSU is already installed
         // Root-only because MANAGE_DYNAMIC_SYSTEM is required
         if (session.isRoot()) {
@@ -209,15 +224,27 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO + installationJob) {
             session.preferences.isUnmountSdCard = readBoolPref(AppPrefs.UMOUNT_SD)
             session.preferences.useBuiltinInstaller = readBoolPref(AppPrefs.USE_BUILTIN_INSTALLER)
-            Preparation(
-                storageManager = storageManager,
-                session = session,
-                job = installationJob,
-                onStepUpdate = this@HomeViewModel::onStepUpdate,
-                onPreparationProgressUpdate = this@HomeViewModel::onPreparationProgressUpdate,
-                onCanceled = this@HomeViewModel::onClickCancelInstallationButton,
-                onPreparationFinished = this@HomeViewModel::onPreparationFinished,
-            ).invoke()
+            try {
+                Preparation(
+                    storageManager = storageManager,
+                    session = session,
+                    job = installationJob,
+                    onStepUpdate = this@HomeViewModel::onStepUpdate,
+                    onPreparationProgressUpdate = this@HomeViewModel::onPreparationProgressUpdate,
+                    onCanceled = this@HomeViewModel::onClickCancelInstallationButton,
+                    onPreparationFinished = this@HomeViewModel::onPreparationFinished,
+                ).invoke()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Unsupported/corrupt/truncated input, I/O or storage errors: report instead of
+                // crashing or silently continuing.
+                Log.e(tag, "Preparation failed", e)
+                runCatching { storageManager.cleanWorkspaceFolder(true) }
+                if (!installationJob.isCancelled) {
+                    onInstallationError(InstallationStep.ERROR, e.message ?: e.toString())
+                }
+            }
         }
     }
 
@@ -254,26 +281,49 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun startDSUInstallation() {
-        DSUInstaller(
-            application = application,
-            userdataSize = session.userSelection.userSelectedUserdata,
-            dsuInstallation = session.dsuInstallation,
-            installationJob = installationJob,
-            onInstallationError = this::onInstallationError,
-            onInstallationProgressUpdate = this::onInstallationProgressUpdate,
-            onCreatePartition = this::onCreatePartition,
-            onInstallationStepUpdate = this::onStepUpdate,
-            onInstallationSuccess = this::onRootInstallationSuccess,
-        ).invoke()
+        // Retry/discard actions may reach here after a previous job ended.
+        if (!installationJob.isActive) {
+            installationJob = Job()
+        }
+        val job = installationJob
+        // Never run the (blocking) installation on the main thread.
+        viewModelScope.launch(Dispatchers.IO + job) {
+            DSUInstaller(
+                application = application,
+                userdataSize = session.userSelection.userSelectedUserdata,
+                dsuInstallation = session.dsuInstallation,
+                installationJob = job,
+                onInstallationError = this@HomeViewModel::onInstallationError,
+                onInstallationProgressUpdate = this@HomeViewModel::onInstallationProgressUpdate,
+                onCreatePartition = this@HomeViewModel::onCreatePartition,
+                onInstallationStepUpdate = this@HomeViewModel::onStepUpdate,
+                onInstallationSuccess = this@HomeViewModel::onRootInstallationSuccess,
+                // The UI was already reset by onClickCancelInstallationButton.
+                onInstallationCancelled = { Log.d(tag, "Root installation cancelled and cleaned up") },
+            ).invoke()
+        }
     }
 
     private fun startPrivilegedInstallation() {
         updateInstallationCard { it.copy(installationStep = InstallationStep.WAITING_USER_CONFIRMATION) }
-        DsuInstallationHandler(session).startInstallation()
-        if (session.isRoot() || OperationModeUtils.isReadLogsPermissionGranted(application)) {
+        val canTrackResult =
+            session.isRoot() || OperationModeUtils.isReadLogsPermissionGranted(application)
+        DsuInstallationHandler(
+            session = session,
+            sdCardRemounter = sdCardRemounter,
+            onSubmitted = {
+                if (!canTrackResult) {
+                    // Without READ_LOGS we cannot observe the DSU app: the request was submitted,
+                    // but success can't be confirmed, so never report INSTALL_SUCCESS here.
+                    updateInstallationCard {
+                        it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED)
+                    }
+                }
+            },
+            onError = { onInstallationError(InstallationStep.ERROR, it) },
+        ).startInstallation()
+        if (canTrackResult) {
             startLogging()
-        } else {
-            updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS) }
         }
     }
 
@@ -314,7 +364,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onClickCancelInstallationButton() {
-        resetInstallationCard()
+        resetInstallationCard() // also remounts temporarily unmounted SD cards
         if (session.getOperationMode() != OperationMode.ADB &&
             logger != null && logger!!.isLogging.get()
         ) {
@@ -523,8 +573,10 @@ class HomeViewModel @Inject constructor(
         updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS_REBOOT_DYN_OS) }
     }
 
+    // Only called when logs confirmed the DSU app reported completion.
     private fun onInstallationSuccess() {
         updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS) }
+        remountSdCards("installation completed")
     }
 
     private fun onLogLineReceived() {
@@ -537,7 +589,8 @@ class HomeViewModel @Inject constructor(
     private fun onPreparationProgressUpdate(progress: Float) =
         updateInstallationCard { it.copy(installationProgress = progress) }
 
-    private fun onInstallationError(error: InstallationStep, errorContent: String) =
+    private fun onInstallationError(error: InstallationStep, errorContent: String) {
+        remountSdCards("installation error: $error")
         updateInstallationCard {
             if (error == InstallationStep.ERROR_SELINUX && !session.isRoot()) {
                 it.copy(
@@ -548,6 +601,7 @@ class HomeViewModel @Inject constructor(
                 it.copy(installationStep = error, errorText = errorContent)
             }
         }
+    }
 
     private fun onInstallationProgressUpdate(progress: Float, partition: String) =
         updateInstallationCard {

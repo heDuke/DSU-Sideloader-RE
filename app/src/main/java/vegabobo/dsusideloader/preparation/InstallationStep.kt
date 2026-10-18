@@ -38,7 +38,11 @@ enum class InstallationStep {
     ERROR_SELINUX,
     ERROR_SELINUX_ROOTLESS,
 
-    // Once installation is finished
+    // Request handed to the DSU system app, but the result can't be observed
+    // (no READ_LOGS permission). Not a success state.
+    INSTALL_SUBMITTED_UNCONFIRMED,
+
+    // Once installation is finished (confirmed)
     INSTALL_SUCCESS,
     INSTALL_SUCCESS_REBOOT_DYN_OS,
 }

@@ -80,6 +80,7 @@
     <string name="cancel_installation_question">是否取消安装？</string>
     <string name="cancel_installation_description">已安装的部分将丢失，确定要取消吗？</string>
     <!-- Installation finished card -->
+    <string name="installation_submitted_unconfirmed">安装请求已提交给系统 DSU 应用。由于没有 READ_LOGS 权限，本应用无法确认安装进度与结果，请通过 DSU 通知查看是否完成。</string>
     <string name="installation_finished_rootless">DSU 安装成功，请检查通知栏提示并重启到动态系统</string>
     <string name="installation_finished">安装已完成</string>
     <string name="reboot_into_dsu">重启到 DSU</string>
