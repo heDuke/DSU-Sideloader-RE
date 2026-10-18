@@ -235,6 +235,8 @@ class HomeViewModel @Inject constructor(
                     onPreparationFinished = this@HomeViewModel::onPreparationFinished,
                 ).invoke()
             } catch (e: CancellationException) {
+                // Don't leave partially decompressed/compressed files behind.
+                runCatching { storageManager.cleanWorkspaceFolder(true) }
                 throw e
             } catch (e: Exception) {
                 // Unsupported/corrupt/truncated input, I/O or storage errors: report instead of

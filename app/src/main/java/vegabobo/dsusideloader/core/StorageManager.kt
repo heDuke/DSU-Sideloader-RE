@@ -8,6 +8,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -100,15 +101,15 @@ class StorageManager(
 
     private fun copyFileToSafFolder(inputFile: Uri): Uri {
         val clone: DocumentFile = createDocumentFile(getFilenameFromUri(inputFile))
-        IOUtils.copy(openInputStream(inputFile), openOutputStream(clone.uri))
+        openInputStream(inputFile).use { input ->
+            openOutputStream(clone.uri).use { output -> IOUtils.copy(input, output) }
+        }
         return clone.uri
     }
 
     fun writeStringToFile(content: String, filename: String): String {
         val file = createDocumentFile(filename)
-        val outputStream = openOutputStream(file.uri)
-        outputStream.write(content.toByteArray())
-        outputStream.close()
+        openOutputStream(file.uri).use { it.write(content.toByteArray()) }
         return FilenameUtils.getFilePath(file.uri, false).replace("file://", "")
     }
 
@@ -125,9 +126,7 @@ class StorageManager(
     }
 
     fun writeStringToUri(content: String, uri: Uri): String {
-        val outputStream = appContext.contentResolver.openOutputStream(uri)!!
-        outputStream.write(content.toByteArray())
-        outputStream.close()
+        openOutputStream(uri).use { it.write(content.toByteArray()) }
         return FilenameUtils.getFilePath(uri, false).replace("file://", "")
     }
 
@@ -145,15 +144,18 @@ class StorageManager(
     }
 
     fun openInputStream(uri: Uri): InputStream {
-        return appContext.contentResolver.openInputStream(uri)!!
+        return appContext.contentResolver.openInputStream(uri)
+            ?: throw FileNotFoundException("Unable to open $uri for reading")
     }
 
     fun openOutputStream(uri: Uri): OutputStream {
-        return appContext.contentResolver.openOutputStream(uri)!!
+        return appContext.contentResolver.openOutputStream(uri)
+            ?: throw FileNotFoundException("Unable to open $uri for writing")
     }
 
     fun createDocumentFile(filename: String): DocumentFile {
-        return getWorkspaceFolder().createFile("application/octet-stream", filename)!!
+        return getWorkspaceFolder().createFile("application/octet-stream", filename)
+            ?: throw IOException("Unable to create $filename in workspace folder")
     }
 
     fun getUriSafe(uri: Uri): Uri {
