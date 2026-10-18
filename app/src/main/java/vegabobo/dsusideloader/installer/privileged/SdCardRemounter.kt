@@ -130,17 +130,26 @@ sealed class AppStartDecision {
 
 object RemountPolicy {
     /**
-     * Decision when the app starts (no task of this process is running).
-     * Only auto-remounts when it is known that no installation can still be using
-     * the unmounted state: after a reboot (DSU installations don't survive a reboot), or
-     * when our own task never handed anything to the system and gsid reports idle.
+     * Decision when the app starts (no task of this process is running). Precedence:
+     *  1. gsid reports an installation in progress -> never auto-remount (prompt; restore is
+     *     refused while it is still installing), even if the device rebooted: a new
+     *     installation may have been started after the reboot.
+     *  2. gsid state unknown (no root, query failed) -> keep the user prompt.
+     *  3. gsid idle: auto-remount only if the device rebooted since the unmount (DSU
+     *     installation sessions don't survive a reboot) or our own task never handed
+     *     anything to the system. Otherwise (SYSTEM_UNKNOWN, same boot) the system DSU app
+     *     may still be waiting for confirmation -> prompt.
      */
     fun onAppStart(record: PendingRemount?, currentBootId: String?, state: SystemDsuState): AppStartDecision {
         if (record == null || record.volumes.isEmpty()) return AppStartDecision.Nothing
-        if (record.bootId != null && currentBootId != null && record.bootId != currentBootId) {
-            return AppStartDecision.Remount("device rebooted since unmount")
+        when (state) {
+            SystemDsuState.INSTALLING, SystemDsuState.UNKNOWN -> return AppStartDecision.Prompt(state)
+            SystemDsuState.IDLE -> Unit
         }
-        if (record.phase == RemountPhase.LOCAL_TASK && state == SystemDsuState.IDLE) {
+        if (record.bootId != null && currentBootId != null && record.bootId != currentBootId) {
+            return AppStartDecision.Remount("device rebooted since unmount and gsid is idle")
+        }
+        if (record.phase == RemountPhase.LOCAL_TASK) {
             return AppStartDecision.Remount("previous task never reached the system and gsid is idle")
         }
         return AppStartDecision.Prompt(state)
@@ -271,6 +280,18 @@ class SdCardRemounter(
         return "mount() returned but volume is still not mounted"
     }
 
+    /** Drops pending volumes that are confirmed mounted or confirmed gone, without mounting. */
+    suspend fun pruneResolved(ops: VolumeOps) = mutex.withLock {
+        val record = store.read() ?: return@withLock
+        val present = runCatching { ops.volumeIds() }.getOrNull() ?: return@withLock
+        val keep = record.volumes.filter { id ->
+            id in present && runCatching { ops.isMounted(id) }.getOrNull() != true
+        }
+        if (keep.size == record.volumes.size) return@withLock
+        log("Already mounted or gone, clearing record: ${record.volumes - keep.toSet()}")
+        store.write(if (keep.isEmpty()) null else record.copy(volumes = keep, failures = record.failures.filterKeys { it in keep }))
+    }
+
     /** Last failure reasons of the pending volumes (for display). */
     suspend fun failureReasons(): Map<String, String> = store.read()?.failures.orEmpty()
 
@@ -279,6 +300,9 @@ class SdCardRemounter(
      * @return the decision (a [AppStartDecision.Prompt] must be shown to the user).
      */
     suspend fun onAppStart(ops: VolumeOps?, currentBootId: String?, state: SystemDsuState): AppStartDecision {
+        // Volumes confirmed mounted (or confirmed gone) only need their stale record cleared;
+        // no mount() is issued for them.
+        if (ops != null) pruneResolved(ops)
         val decision = RemountPolicy.onAppStart(store.read(), currentBootId, state)
         log("App start remount decision: $decision")
         if (decision is AppStartDecision.Remount) {

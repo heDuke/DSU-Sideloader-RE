@@ -138,31 +138,50 @@ class SdCardRemounterTest {
 
     @Test
     fun appStartRemountsOnlyWhenProvablySafe() = kotlinx.coroutines.runBlocking {
-        val ops = FakeOps(mutableListOf("public:1,1"))
-        // Reboot since unmount: DSU installation sessions do not survive a reboot.
-        val rebooted = MemoryStore(listOf("public:1,1"), RemountPhase.SYSTEM_UNKNOWN, "7")
-        assertTrue(SdCardRemounter(rebooted).onAppStart(ops, "8", SystemDsuState.UNKNOWN) is AppStartDecision.Remount)
-        assertEquals(listOf("public:1,1"), ops.mounted)
-        assertEquals(emptyList<String>(), rebooted.ids)
+        // Review RR3: every phase x boot x gsid-state combination.
+        for (phase in RemountPhase.values()) {
+            for (boot in listOf("7", "8", null)) {
+                for (state in SystemDsuState.values()) {
+                    val record = PendingRemount(listOf("public:1,1"), phase, "7")
+                    val d = RemountPolicy.onAppStart(record, boot, state)
+                    val rebooted = boot == "8"
+                    val expectAuto = state == SystemDsuState.IDLE && (rebooted || phase == RemountPhase.LOCAL_TASK)
+                    assertEquals("$phase boot=$boot $state -> $d", expectAuto, d is AppStartDecision.Remount)
+                    if (!expectAuto) assertEquals(AppStartDecision.Prompt(state), d)
+                }
+            }
+        }
+        // Unknown recorded boot id never counts as a reboot.
+        val noBoot = PendingRemount(listOf("public:1,1"), RemountPhase.SYSTEM_UNKNOWN, null)
+        assertTrue(RemountPolicy.onAppStart(noBoot, "8", SystemDsuState.IDLE) is AppStartDecision.Prompt)
+        assertEquals(AppStartDecision.Nothing, RemountPolicy.onAppStart(null, "8", SystemDsuState.IDLE))
+    }
 
-        // Never handed to the system: remount only when gsid confirms idle.
-        val local = MemoryStore(listOf("public:1,1"), RemountPhase.LOCAL_TASK, "7")
-        val ops2 = FakeOps(mutableListOf("public:1,1"))
-        assertEquals(
-            AppStartDecision.Prompt(SystemDsuState.UNKNOWN),
-            SdCardRemounter(local).onAppStart(ops2, "7", SystemDsuState.UNKNOWN),
-        )
-        assertEquals(
-            AppStartDecision.Prompt(SystemDsuState.INSTALLING),
-            SdCardRemounter(local).onAppStart(ops2, "7", SystemDsuState.INSTALLING),
-        )
-        assertEquals(emptyList<String>(), ops2.mounted)
-        assertTrue(SdCardRemounter(local).onAppStart(ops2, "7", SystemDsuState.IDLE) is AppStartDecision.Remount)
-        assertEquals(listOf("public:1,1"), ops2.mounted)
+    @Test
+    fun rebootPlusInstallingOrUnknownNeverMounts() = kotlinx.coroutines.runBlocking {
+        for (state in listOf(SystemDsuState.INSTALLING, SystemDsuState.UNKNOWN)) {
+            val store = MemoryStore(listOf("public:1,1"), RemountPhase.SYSTEM_UNKNOWN, "7")
+            val ops = FakeOps(mutableListOf("public:1,1"))
+            assertEquals(AppStartDecision.Prompt(state), SdCardRemounter(store).onAppStart(ops, "8", state))
+            assertEquals(emptyList<String>(), ops.mounted)
+            assertEquals(listOf("public:1,1"), store.ids)
+        }
+        // Reboot + idle -> remounted.
+        val store = MemoryStore(listOf("public:1,1"), RemountPhase.SYSTEM_UNKNOWN, "7")
+        val ops = StatefulOps(listOf("public:1,1"))
+        assertTrue(SdCardRemounter(store, verifyDelayMs = 1).onAppStart(ops, "8", SystemDsuState.IDLE) is AppStartDecision.Remount)
+        assertEquals(listOf("public:1,1"), ops.mountCalls)
+        assertEquals(emptyList<String>(), store.ids)
+    }
 
-        // Unknown boot id never counts as a reboot.
-        val noBoot = MemoryStore(listOf("public:1,1"), RemountPhase.SYSTEM_UNKNOWN, null)
-        assertTrue(SdCardRemounter(noBoot).onAppStart(ops, "8", SystemDsuState.IDLE) is AppStartDecision.Prompt)
+    @Test
+    fun appStartClearsConfirmedMountedOrGoneVolumesWithoutMounting() = kotlinx.coroutines.runBlocking {
+        val store = MemoryStore(listOf("public:1,1", "public:2,1", "public:3,1"), RemountPhase.SYSTEM_UNKNOWN, "7")
+        val ops = StatefulOps(listOf("public:1,1", "public:2,1")).apply { state["public:1,1"] = true }
+        val d = SdCardRemounter(store).onAppStart(ops, "8", SystemDsuState.INSTALLING)
+        assertEquals(AppStartDecision.Prompt(SystemDsuState.INSTALLING), d)
+        assertEquals(emptyList<String>(), ops.mountCalls)
+        assertEquals(listOf("public:2,1"), store.ids) // 1 mounted, 3 gone -> cleared
     }
 
     @Test
