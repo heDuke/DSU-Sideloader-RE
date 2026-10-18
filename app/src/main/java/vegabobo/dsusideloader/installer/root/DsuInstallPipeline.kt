@@ -270,13 +270,10 @@ class DsuInstallPipeline(
                 val entry = zis.nextEntry ?: break
                 when (val decision = tracker.decide(entry.name, entry.isDirectory)) {
                     is DsuPartitionPolicy.Decision.Install -> {
-                        if (entry.size < 0) {
-                            fail(
-                                InstallationStep.ERROR,
-                                "Unknown uncompressed size for ${entry.name} (zip data descriptor)",
-                            )
-                        }
-                        log("Installing: ${entry.name}")
+                        // entry.size is -1 for streamed (data descriptor) entries. Pass it
+                        // through: installImage reads the sparse header first and only rejects
+                        // raw images whose size is still unknown.
+                        log("Installing: ${entry.name} (zip size: ${entry.size})")
                         installImage(decision.partition, entry.size, NonClosingInputStream(zis))
                         installed++
                     }

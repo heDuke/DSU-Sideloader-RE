@@ -331,12 +331,26 @@ class DsuInstallPipelineTest {
     }
 
     @Test
-    fun zipEntryWithUnknownSizeFails() {
-        // DEFLATED entries written by ZipOutputStream use a data descriptor: size unknown while streaming.
+    fun zipRawEntryWithUnknownSizeFails() {
+        // DEFLATED entries written by ZipOutputStream use a data descriptor: size unknown while
+        // streaming. A raw image has no other size source, so it must be rejected.
         val b = FakeBackend()
         val data = zip("system.img" to payload, stored = false)
         assertFailedWithCleanup(b, run(b, DsuImageSource.ZipPackage { ByteArrayInputStream(data) }), InstallationStep.ERROR)
         assertFalse(b.calls.any { it.startsWith("create:system") })
+    }
+
+    @Test
+    fun zipSparseEntryWithUnknownSizeSucceeds() {
+        // Regression (review P1-1): a sparse image carries its own size in the header, so a
+        // DEFLATED entry with a data descriptor (size -1) is valid, as on master.
+        val b = FakeBackend()
+        val img = sparseImage(blockSize = 8, rawBlocks = 2, dontCareBlocks = 3)
+        val data = zip("system.img" to img, stored = false)
+        val r = run(b, DsuImageSource.ZipPackage { ByteArrayInputStream(data) })
+        assertEquals(DsuInstallResult.Success, r)
+        assertTrue(b.calls.contains("create:system:40:true"))
+        assertEquals(40, b.written["system"]!!.size())
     }
 
     @Test
