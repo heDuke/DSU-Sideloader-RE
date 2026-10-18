@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -38,6 +39,16 @@ class TaskStepTest {
             val id = gate.begin()!!
             installationJob = Job()
             return id
+        }
+
+        /**
+         * The terminals once one was reported. Job.join() can return before the job's completion
+         * handlers (the TaskSteps fallback) ran, so wait for it, then leave a duplicate time to appear.
+         */
+        suspend fun awaitTerminals(): List<String> {
+            withTimeout(3000) { while (synchronized(terminals) { terminals.isEmpty() }) delay(2) }
+            delay(20)
+            return synchronized(terminals) { terminals.toList() }
         }
 
         /** HomeViewModel.onPreparationStepUnsettled */
@@ -80,7 +91,7 @@ class TaskStepTest {
         withTimeout(3000) { readEntered.await() }
         c.cancel()
         withTimeout(3000) { job.join() }
-        assertEquals(listOf("ERROR_CANCELED"), c.terminals)
+        assertEquals(listOf("ERROR_CANCELED"), c.awaitTerminals())
         assertFalse(c.gate.isBusy())
         assertTrue(c.gate.begin() != null)
     }
@@ -99,7 +110,7 @@ class TaskStepTest {
         withTimeout(3000) { job.join() }
         executor.shutdown()
         assertEquals(0, ran.get())
-        assertEquals(listOf("ERROR_CANCELED"), c.terminals)
+        assertEquals(listOf("ERROR_CANCELED"), c.awaitTerminals())
         assertFalse(c.gate.isBusy())
     }
 
@@ -110,7 +121,7 @@ class TaskStepTest {
         c.cancel()
         val job = c.launchPreparation(id) { error("must not run") }
         withTimeout(3000) { job.join() }
-        assertEquals(listOf("ERROR_CANCELED"), c.terminals)
+        assertEquals(listOf("ERROR_CANCELED"), c.awaitTerminals())
         assertFalse(c.gate.isBusy())
     }
 
@@ -120,7 +131,7 @@ class TaskStepTest {
         val id = c.beginTask()
         val job = c.launchPreparation(id) { throw java.io.IOException("datastore corrupted") }
         withTimeout(3000) { job.join() }
-        assertEquals(listOf("ERROR:datastore corrupted"), c.terminals)
+        assertEquals(listOf("ERROR:datastore corrupted"), c.awaitTerminals())
         assertFalse(c.gate.isBusy())
     }
 
@@ -129,8 +140,9 @@ class TaskStepTest {
         val c = Coordinator()
         val id = c.beginTask()
         withTimeout(3000) { c.launchPreparation(id) { }.join() }
-        assertEquals(1, c.terminals.size)
-        assertTrue(c.terminals[0].startsWith("ERROR"))
+        val terminals = c.awaitTerminals()
+        assertEquals(1, terminals.size)
+        assertTrue(terminals[0].startsWith("ERROR"))
         assertFalse(c.gate.isBusy())
     }
 
@@ -141,6 +153,7 @@ class TaskStepTest {
         val job = c.launchPreparation(id) { step -> assertTrue(step.settle()) /* next step owns the task */ }
         withTimeout(3000) { job.join() }
         c.cancel()
+        delay(50) // completion handlers may still run after join()
         assertEquals(0, c.terminalCount.get())
         assertTrue(c.gate.isBusy()) // released by the next step's own terminal, not here
     }
@@ -162,7 +175,7 @@ class TaskStepTest {
         assertTrue(c.gate.isBusy())
         release.countDown()
         withTimeout(3000) { job.join() }
-        assertEquals(listOf("ERROR_CANCELED"), c.terminals)
+        assertEquals(listOf("ERROR_CANCELED"), c.awaitTerminals())
     }
 
     /** FR1: whatever the body throws after settling (incl. a cancellation) reaches onErrorAfterSettle once. */
@@ -174,10 +187,11 @@ class TaskStepTest {
             AssertionError("not an Exception"),
         )) {
             val reported = mutableListOf<Throwable>()
+            val escaped = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
             val unsettled = AtomicInteger()
             val job = TaskSteps.launch(
                 CoroutineScope(SupervisorJob()),
-                Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> },
+                Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e -> escaped += e },
                 onUnsettled = { unsettled.incrementAndGet() },
                 onErrorAfterSettle = { synchronized(reported) { reported += it } },
             ) { step ->
@@ -187,6 +201,9 @@ class TaskStepTest {
             withTimeout(3000) { job.join() }
             assertEquals(thrown.toString(), listOf(thrown), synchronized(reported) { reported.toList() })
             assertEquals(0, unsettled.get())
+            // Exceptions are handled; a non-Exception Throwable is reported and then rethrown
+            // (expected, and asserted here instead of leaking to a worker thread).
+            assertEquals(if (thrown is Exception) emptyList() else listOf(thrown), escaped.toList())
         }
     }
 }
