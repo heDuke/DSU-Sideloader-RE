@@ -53,7 +53,7 @@ def main():
         kotlin = [production / path for path in [
             "installer/root/DsuInstallPipeline.kt", "installer/root/DsuPartitionPolicy.kt",
             "preparation/GzipImageSize.kt", "preparation/InstallationStep.kt",
-            "installer/privileged/SdCardRemounter.kt",
+            "installer/privileged/SdCardRemounter.kt", "installer/privileged/LogcatDiagnostic.kt",
             "installer/privileged/DsuInstallationHandler.kt", "service/PrivilegedProvider.kt",
             "installer/task/InstallTaskGate.kt", "installer/task/InstallOutcome.kt",
             "installer/task/TaskStep.kt", "installer/privileged/DsuSubmission.kt",
@@ -61,7 +61,7 @@ def main():
             "ui/screen/home/HomeUiState.kt", "core/TaskWorkspaces.kt",
         ]]
         kotlin += list((source / "app/src/test").rglob("*.kt"))
-        kotlin += sorted((here / "stubs").glob("*.kt")) + [here / "HomeWiringHarness.kt", here / "FourthReviewWiringTest.kt", here / "FifthReviewWiringTest.kt", here / "RetryWiringTest.kt", here / "RetryHistoryReviewTest.kt", here / "RetryHandoffWiringTest.kt"]
+        kotlin += sorted((here / "stubs").glob("*.kt")) + [here / "HomeWiringHarness.kt", here / "FourthReviewWiringTest.kt", here / "FifthReviewWiringTest.kt", here / "RetryWiringTest.kt", here / "RetryHistoryReviewTest.kt", here / "RetryHandoffWiringTest.kt", here / "RecoveryReviewTest.kt", here / "LoggingHandoffReviewTest.kt", here / "LoggingHandoffWiringTest.kt"]
         subprocess.run(["java", "-cp", cp, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", cp, "-d", str(classes)] + list(map(str, kotlin)), check=True)
         runner = ["java", "-cp", cp, "org.junit.runner.JUnitCore"]
         baseline = subprocess.run(runner + [
@@ -87,8 +87,11 @@ def main():
         retry = subprocess.run(runner + ["review3.RetryWiringTest"])
         history = subprocess.run(runner + ["review3.RetryHistoryReviewTest"])
         handoff = subprocess.run(runner + ["review3.RetryHandoffWiringTest"])
+        recovery = subprocess.run(runner + ["review3.RecoveryReviewTest"])
+        logging = subprocess.run(runner + ["review3.LoggingHandoffReviewTest"])
+        logging_full = subprocess.run(runner + ["review3.LoggingHandoffWiringTest"])
         print("Expected: all project tests, TR1/TR2, FR1, 4 fifth-review terminal probes and the retry-entry probes passing. These run verbatim ViewModel method fragments with substituted framework boundaries, NOT an Android ViewModel/lifecycle/Binder integration test.", flush=True)
-        return baseline.returncode or regressions.returncode or exceptional.returncode or extra.returncode or retry.returncode or history.returncode or handoff.returncode
+        return baseline.returncode or regressions.returncode or exceptional.returncode or extra.returncode or retry.returncode or history.returncode or handoff.returncode or recovery.returncode or logging.returncode or logging_full.returncode
 
 if __name__ == "__main__":
     raise SystemExit(main())

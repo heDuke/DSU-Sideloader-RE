@@ -8,7 +8,8 @@ class Session {
     var installationScriptPath = ""
     fun getOperationMode() = mode
     fun getInstallationParameters() = Triple(1024L, "file:///review/system.gz", 32L)
-    fun isRoot() = false
+    var rootMode = false
+    fun isRoot() = rootMode
     class Selection { var userSelectedUserdata = 1024L }
 }
 

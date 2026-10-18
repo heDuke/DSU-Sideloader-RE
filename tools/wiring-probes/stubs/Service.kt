@@ -1,7 +1,9 @@
 package vegabobo.dsusideloader
 import android.content.Intent
 data class ReviewVolume(val id: String, val state: Int = 0)
+data class ReviewProgress(val status: Int = 0)
 interface IPrivilegedService {
+    val installationProgress: ReviewProgress get() = ReviewProgress()
     val volumes: List<ReviewVolume>
     val isInstalled: Boolean get() = false
     fun abort(): Boolean = true

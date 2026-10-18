@@ -39,3 +39,19 @@ PATH=/path/to/jdk17/bin:$PATH python3 tools/wiring-probes/run_wiring_probes.py .
   - 从未交接的取消仍会恢复存储（正向用例）。
 
   每个用例都断言：没有 mount、SYSTEM_UNKNOWN 记录保留、只有一个终态、下一任务的行为正确、没有协程逃逸异常。
+
+## PR #3 二轮复审（RE2）之后的改动
+
+- 原样取自 `docs/grok-handoff` 分支 `docs/reviews/pr3-rereview-repro/`（提交 5b9e32c）的文件：
+  - `extract_wiring.py`、`run_wiring_probes.py`；
+  - `RecoveryReviewTest.kt`、`LoggingHandoffReviewTest.kt`；
+  - `stubs/`，其中新增 `CmdRunner.kt`，`Service.kt`、`Session.kt`、`AppPrefs.kt` 有调整。
+
+  改动内容：抽取真实的存储恢复状态刷新与卡片操作方法、真实 `startLogging`，并编译真实 `LogcatDiagnostic`。
+- 之后只在 runner 中追加了本仓库的 `LoggingHandoffWiringTest.kt`。场景：普通入口在交接后日志初始化抛异常。断言：
+  - 不自动 mount；
+  - SYSTEM_UNKNOWN 记录保留；
+  - 只有一个终态 `INSTALL_SUBMITTED_UNCONFIRMED`，并带错误详情；
+  - 显式恢复可用，且只有显式恢复会 mount；
+  - 下一任务可开始；
+  - 没有协程逃逸异常。

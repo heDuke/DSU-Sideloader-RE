@@ -8,7 +8,7 @@ here = Path(__file__).resolve().parent
 source = (repo / 'app/src/main/java/vegabobo/dsusideloader/ui/screen/home/HomeViewModel.kt').read_text()
 names = [
     # Retry entries (fix/retry-entry-guard): currentOrNewTask moved into RetryEntry (TaskStep.kt).
-    'remountSdCardsIfOwnedBy', 'createRetryEntry', 'onClickRetryInstallation', 'onClickUnmountSdCardAndRetry', 'onClickSetSeLinuxPermissive',
+    'startLogging', 'refreshStorageRestorePending', 'showStorageRestore', 'querySystemDsuState', 'onRestoreStorage', 'onAcknowledgeUnconfirmed', 'onAcknowledgeCleanupIncomplete', 'onInstallationCardAction', 'resetInstallationCard', 'remountSdCardsIfOwnedBy', 'createRetryEntry', 'onClickRetryInstallation', 'onClickUnmountSdCardAndRetry', 'onClickSetSeLinuxPermissive',
     'setupAdbInstallation', 'onConfirmInstallationSheet', 'onPreparationFinished', 'startInstallation', 'beginTask', 'ifAccepts', 'updateInstallationCard',
     'onPreparationStepUnsettled', 'onTaskCancelledWithoutSystemChanges',
     'startPrivilegedInstallation', 'onClickCancelInstallationButton',
@@ -32,6 +32,7 @@ def method(name):
 prefix = '''package review3
 
 import android.util.Log
+import vegabobo.dsusideloader.IPrivilegedService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import vegabobo.dsusideloader.installer.privileged.*
@@ -78,8 +79,7 @@ class HomeWiringHarness {
     private val _uiState = MutableStateFlow(HomeUiState())
     @Volatile private var dsuSubmission: DsuSubmissionStep? = null
     @Volatile private var taskThatUnmounted: Long? = null
-    private class Logger { fun destroy() {} }
-    private var logger: Logger? = null
+    private var logger: LogcatDiagnostic? = null
     var persistHook: (PendingRemount?) -> Unit = {}
     private val sdCardRemounter = SdCardRemounter(object : PendingRemountStore {
         var record: PendingRemount? = null
@@ -88,10 +88,7 @@ class HomeWiringHarness {
     })
     var bootIdHook: () -> String? = { "7" }
     private fun currentBootId(): String? = bootIdHook()
-    private fun startLogging(id: Long) {}
-    private fun refreshStorageRestorePending() {}
     private fun dismissSheet() {}
-    private fun resetInstallationCard() { _uiState.value = HomeUiState() }
     fun newTask(): Long? = beginTask()
     fun beginSubmission(id: Long) = startPrivilegedInstallation(id)
     fun preparationStopped(id: Long) = onPreparationStepUnsettled(id, CancellationException("review cancellation"))
@@ -101,9 +98,16 @@ class HomeWiringHarness {
     fun submissionJob() = dsuSubmission!!.job
     suspend fun pendingRecord() = sdCardRemounter.pending()
     fun taskJob(id: Long) = taskGate.jobOf(id)!!
+    fun card() = _uiState.value.installationCard
     fun cardError() = _uiState.value.installationCard.errorText
     fun cardStep() = _uiState.value.installationCard.installationStep
-    private fun readBoolPref(key: String) = false
+    var prefHook: (String) -> Boolean = { false }
+    private fun readBoolPref(key: String) = prefHook(key)
+    private fun generateUsefulLogInfo() = "review log context"
+    private fun onInstallationProgressUpdate(p: Float, part: String) {}
+    private fun onLogLineReceived() {}
+    private fun onTaskConfirmedSuccess(id: Long) {}
+    fun hasHanded(id: Long) = taskGate.hasHandedToSystem(id)
     private fun onStepUpdate(step: InstallationStep) {}
     private fun onPreparationProgressUpdate(p: Float) {}
     private fun startDSUInstallation(id: Long) { error("unused root boundary") }
