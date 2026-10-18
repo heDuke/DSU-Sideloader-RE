@@ -272,6 +272,8 @@ fun InstallationCardStep(
             ProgressableCardContent(
                 text = stringResource(R.string.installation_submitted_unconfirmed) + "\n\n" +
                     stringResource(R.string.installation_submitted_unconfirmed_details) +
+                    // e.g. a retry that failed after an earlier request reached the system
+                    (if (uiState.errorText.isNotBlank()) "\n\n${uiState.errorText}" else "") +
                     storageRestoreText(uiState),
                 textFirstButton = stringResource(R.string.restore_storage),
                 onClickFirstButton = if (uiState.storageRestorePending) {

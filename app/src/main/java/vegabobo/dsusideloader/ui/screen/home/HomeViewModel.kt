@@ -40,6 +40,7 @@ import vegabobo.dsusideloader.installer.root.DSUInstaller
 import vegabobo.dsusideloader.installer.root.DsuInstallResult
 import vegabobo.dsusideloader.installer.task.InstallOutcome
 import vegabobo.dsusideloader.installer.task.InstallTaskGate
+import vegabobo.dsusideloader.installer.task.RetryEntry
 import vegabobo.dsusideloader.installer.task.TaskSteps
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
@@ -432,6 +433,10 @@ class HomeViewModel @Inject constructor(
                 if (!taskGate.finish(id)) return
                 remountSdCardsIfOwnedBy(id, "preparation error")
                 onInstallationError(InstallationStep.ERROR, listOfNotNull(message, cleanupNote).joinToString("\n"))
+            } catch (e: Exception) {
+                // Reporting itself failed: don't let it escape into the step / scope (it would
+                // crash the app); the finally block below still releases the task.
+                Log.e(tag, "Reporting the outcome of task $id failed", e)
             } finally {
                 // Last resort (reporting itself threw): never keep the task locked.
                 if (taskGate.finish(id)) {
@@ -496,7 +501,11 @@ class HomeViewModel @Inject constructor(
         // The task's own Job (once ROOT_INSTALL, a cancel is reported by the pipeline itself).
         val job = taskGate.jobOf(id)
         if (job == null || !taskGate.setPhase(id, InstallTaskGate.Phase.ROOT_INSTALL)) {
-            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before install"))
+            // Still PREPARING: the preparation side owns the cancel. (A retry inside a task the
+            // backend took over is reported by that backend's cancel path.)
+            if (taskGate.isCancelling(id) && taskGate.isOwnedByPreparation(id)) {
+                onPreparationStepUnsettled(id, CancellationException("cancelled before install"))
+            }
             return
         }
         // Never run the (blocking) installation on the main thread. Not bound to the job:
@@ -534,7 +543,9 @@ class HomeViewModel @Inject constructor(
         // The task's own Job: never a shared field a newer task may have replaced meanwhile.
         val job = taskGate.jobOf(id)
         if (job == null || !taskGate.acceptsUpdates(id)) {
-            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
+            if (taskGate.isCancelling(id) && taskGate.isOwnedByPreparation(id)) {
+                onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
+            }
             return
         }
         val canTrackResult =
@@ -555,7 +566,10 @@ class HomeViewModel @Inject constructor(
             start = CoroutineStart.LAZY,
             onUnsettled = { cause -> onSubmissionStepUnsettled(id, cause, submission) },
         ) { step ->
-            when (val result = submission.submit()) {
+            val result = submission.submit()
+            // Kept for the whole task: a later retry can't undo this handoff.
+            if (submission.hasReachedSystem) taskGate.markHandedToSystem(id)
+            when (result) {
                 DsuSubmission.Result.Submitted -> {
                     step.settle()
                     if (!canTrackResult) {
@@ -563,7 +577,7 @@ class HomeViewModel @Inject constructor(
                         // but success can't be confirmed, so never report INSTALL_SUCCESS here.
                         ifAccepts(id) {
                             updateInstallationCard {
-                                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED)
+                                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED, errorText = "")
                             }
                         }
                     }
@@ -584,7 +598,9 @@ class HomeViewModel @Inject constructor(
         }
         if (!registered) {
             stepJob.cancel()
-            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
+            if (taskGate.isCancelling(id) && taskGate.isOwnedByPreparation(id)) {
+                onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
+            }
             return
         }
         ifAccepts(id) {
@@ -603,7 +619,7 @@ class HomeViewModel @Inject constructor(
         if (job == null || !taskGate.acceptsUpdates(id)) return
         logger?.destroy()
         val newLogger = LogcatDiagnostic(
-            onInstallationError = { step, text -> onTaskFailed(id, step, text) },
+            onInstallationError = { step, text -> onTaskFailed(id, step, text, systemReported = true) },
             onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
             onInstallationProgressUpdate = { p, part -> ifAccepts(id) { onInstallationProgressUpdate(p, part) } },
             onInstallationSuccess = { onTaskConfirmedSuccess(id) },
@@ -660,7 +676,9 @@ class HomeViewModel @Inject constructor(
     /** Submission step ended without a result (cancelled, or returned without settling). */
     private fun onSubmissionStepUnsettled(id: Long, cause: Throwable?, submission: DsuSubmission) {
         if (taskGate.isCancelling(id)) return // the cancel path waits for this step and decides
-        if (submission.hasReachedSystem) {
+        if (submission.hasReachedSystem) taskGate.markHandedToSystem(id)
+        if (taskGate.hasHandedToSystem(id)) {
+            // This request or an earlier one of the task reached the system: still unconfirmed.
             onTaskFailed(id, InstallationStep.ERROR, cause?.toString() ?: "Submission ended without a result")
         } else {
             onTaskCancelledWithoutSystemChanges(id)
@@ -669,10 +687,16 @@ class HomeViewModel @Inject constructor(
 
     private fun cancelDsuAppInstallation(id: Long) {
         logger?.destroy()
-        val step = dsuSubmission?.takeIf { it.taskId == id }
         viewModelScope.launch(Dispatchers.IO) {
+            // A retry step of this task (already cancelled with the task Job) may still be
+            // registering a new request: wait until it stopped, then the registered request
+            // (setPhase/registration is refused after the cancel) is the one to stop.
+            taskGate.retryJobOf(id)?.let { it.cancel(); it.join() }
+            val step = dsuSubmission?.takeIf { it.taskId == id }
             // Wait until the request can no longer unmount storage or open the DSU prompt.
-            val reachedSystem = step?.cancelAndJoin() ?: false
+            // An earlier request of this task that reached the system counts too: a retry
+            // cancelled before its own handoff doesn't end the earlier system installation.
+            val reachedSystem = (step?.cancelAndJoin() ?: false) || taskGate.hasHandedToSystem(id)
             if (!reachedSystem) {
                 finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, ""))
                 return@launch
@@ -729,9 +753,31 @@ class HomeViewModel @Inject constructor(
         updateInstallationCard { it.copy(installationStep = outcome.step, errorText = outcome.detail) }
     }
 
-    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String) {
+    /**
+     * The policy follows the task's handoff state, not the caller: if a request of this task
+     * already reached the system and the error comes from our side (a retry, the submission,
+     * log/diagnostic setup, ...), the system installation is still unconfirmed. The task then
+     * ends as "submitted, unconfirmed" with this error as detail, the pending remount record
+     * (SYSTEM_UNKNOWN) is kept and storage is only restored by the explicit restore action (or
+     * the app start policy), never automatically here.
+     *
+     * [systemReported]: the error was reported by the system DSU app itself (logcat), i.e. the
+     * system installation ended; only then the normal error + remount path applies after a
+     * handoff.
+     */
+    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String, systemReported: Boolean = false) {
         if (taskGate.isCancelling(id)) return // the cancel path reports the terminal state
+        val handedToSystem = !systemReported && taskGate.hasHandedToSystem(id)
         if (!taskGate.finish(id)) return
+        if (handedToSystem) {
+            Log.w(tag, "Task $id: request failed after an earlier handoff to the system: $errorContent")
+            if (taskThatUnmounted == id) taskThatUnmounted = null // no automatic remount
+            updateInstallationCard {
+                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED, errorText = errorContent)
+            }
+            refreshStorageRestorePending()
+            return
+        }
         remountSdCardsIfOwnedBy(id, "installation error: $error")
         onInstallationError(error, errorContent)
     }
@@ -776,33 +822,44 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Retry within the current task (e.g. re-open the DSU prompt) or as a new task. */
-    private fun currentOrNewTask(): Long? {
-        val task = taskGate.current()
-        if (task != null) return if (task.cancelling) null else task.id
-        return beginTask()
+    /**
+     * Retry entries: task selection, IO dispatch, exception/cancel handling and the single
+     * terminal outcome are in [RetryEntry] (see there); repeated taps are ignored while a
+     * retry or a DSU app request of the task is in flight.
+     */
+    private val retryEntry: RetryEntry by lazy { createRetryEntry() }
+
+    private fun createRetryEntry(): RetryEntry {
+        return RetryEntry(
+            gate = taskGate,
+            scope = viewModelScope,
+            io = Dispatchers.IO,
+            beginTask = { beginTask() },
+            submissionInFlight = { id -> dsuSubmission?.takeIf { it.taskId == id }?.job?.isCompleted == false },
+            onAccepted = { id -> ifAccepts(id) { updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) } } },
+            startInstallation = { id -> startInstallation(id, inStep = true) },
+            onPreparationEnded = { id, cause, inStep -> onPreparationStepUnsettled(id, cause, inStep) },
+            onTaskFailed = { id, e ->
+                Log.e(tag, "Retry failed", e)
+                onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
+            },
+            log = { Log.d(tag, it) },
+        )
     }
 
     fun onClickRetryInstallation() {
-        val id = currentOrNewTask() ?: return
-        updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        startInstallation(id)
+        retryEntry.retry()
     }
 
     fun onClickUnmountSdCardAndRetry() {
-        val id = currentOrNewTask() ?: return
-        updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        session.preferences.isUnmountSdCard = true
-        startInstallation(id)
+        retryEntry.retry { session.preferences.isUnmountSdCard = true }
     }
 
     fun onClickSetSeLinuxPermissive() {
-        val id = currentOrNewTask() ?: return
-        updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        viewModelScope.launch(Dispatchers.IO) {
-            Shell.cmd("setenforce 0").exec()
-            delay(5000)
-            startInstallation(id)
+        retryEntry.retry {
+            val result = Shell.cmd("setenforce 0").exec()
+            if (!result.isSuccess) Log.w(tag, "setenforce 0 failed: ${result.err}")
+            delay(5000) // cancellable
         }
     }
 

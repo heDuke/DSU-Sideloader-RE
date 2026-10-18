@@ -4,7 +4,8 @@ on:
   push:
     branches: [ "master" ]
   pull_request:
-    branches: [ "master" ]
+    # fix/p0-installer-correctness: base of the stacked PR #3.
+    branches: [ "master", "fix/p0-installer-correctness" ]
 
 jobs:
   build:
@@ -32,6 +33,11 @@ jobs:
 
     - name: Build with Gradle
       run: ./gradlew assembleMiniDebug
+
+    # ViewModel wiring probes (methods extracted verbatim, JVM only, no Android SDK).
+    # Needs python3 and JDK 17 (javac + Kotlin compiler jar fetched from Maven Central).
+    - name: Wiring probes
+      run: python3 tools/wiring-probes/run_wiring_probes.py . --deps "$RUNNER_TEMP/wiring-probe-deps"
 
     - name: Fail if the build modified tracked files
       run: git diff --exit-code

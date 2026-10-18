@@ -150,4 +150,27 @@ class InstallTaskTest {
         assertEquals(InstallationStep.ERROR_CANCELED.name, ui.get())
         assertNotNull(gate.begin())
     }
+
+    /** RE1: the handoff of an earlier request survives later retries and cancel, per task only. */
+    @Test
+    fun handoffToSystemIsKeptForTheWholeTask() {
+        val gate = InstallTaskGate()
+        val id = gate.begin()!!
+        assertFalse(gate.hasHandedToSystem(id))
+        assertTrue(gate.setPhase(id, InstallTaskGate.Phase.DSU_APP))
+        gate.markHandedToSystem(id)
+        // A retry of the same task (new step, phase switch again) doesn't reset it.
+        val retry = gate.attachRetry(id) { kotlinx.coroutines.Job() }
+        assertNotNull(retry)
+        retry!!.cancel()
+        assertTrue(gate.setPhase(id, InstallTaskGate.Phase.DSU_APP))
+        assertTrue(gate.hasHandedToSystem(id))
+        assertNotNull(gate.requestCancel())
+        assertTrue("kept while cancelling", gate.hasHandedToSystem(id))
+        gate.markHandedToSystem(id + 1) // stale/other id: no effect
+        assertTrue(gate.finish(id))
+        assertFalse(gate.hasHandedToSystem(id))
+        val next = gate.begin()!!
+        assertFalse("a new task starts without handoff", gate.hasHandedToSystem(next))
+    }
 }

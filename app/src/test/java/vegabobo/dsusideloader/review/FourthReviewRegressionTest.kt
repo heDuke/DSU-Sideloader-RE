@@ -5,11 +5,14 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -36,7 +39,13 @@ class FourthReviewRegressionTest {
 
     private class Model {
         val gate = InstallTaskGate()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        /** Exceptions escaping a coroutine of the model: must stay empty (asserted). */
+        val uncaught: MutableList<Throwable> = Collections.synchronizedList(mutableListOf<Throwable>())
+        val reportErrors: MutableList<Throwable> = Collections.synchronizedList(mutableListOf<Throwable>())
+        val scope = CoroutineScope(
+            SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> uncaught += e },
+        )
         val root = MemDir("workspace_dsuhelper")
         val terminals: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
 
@@ -67,6 +76,8 @@ class FourthReviewRegressionTest {
                 }
                 if (!gate.finish(id)) return
                 terminal(id, "ERROR", listOfNotNull(cause?.message, cleanupNote).joinToString("\n"))
+            } catch (e: Exception) {
+                reportErrors += e // HomeViewModel logs it instead of letting it escape
             } finally {
                 if (gate.finish(id)) terminal(id, "ERROR", "Installation ended unexpectedly")
             }
@@ -115,7 +126,12 @@ class FourthReviewRegressionTest {
             return id to job
         }
 
-        fun assertReleasedWithSingleTerminal(expected: String) {
+        suspend fun assertReleasedWithSingleTerminal(expected: String) {
+            // Job.join() can return before the job's completion handlers (the TaskSteps
+            // fallback) ran: wait for the terminal, then give a duplicate time to show up.
+            withTimeout(5000) { while (gate.isBusy() || card != expected) delay(5) }
+            delay(50)
+            assertTrue("no unhandled coroutine exception: $uncaught", uncaught.isEmpty())
             assertFalse("task lock must be released", gate.isBusy())
             assertEquals(listOf(expected), terminals.toList())
             assertEquals(expected, card)
@@ -217,6 +233,9 @@ class FourthReviewRegressionTest {
         assertFalse(m.gate.isBusy())
         assertEquals(listOf("ERROR"), m.terminals.toList())
         assertFalse(m.card == "CANCELLING")
+        // The injected failure is caught and recorded, not leaked to a background thread.
+        assertEquals(listOf("UI update failed"), m.reportErrors.map { it.message })
+        assertTrue("no unhandled coroutine exception: ${m.uncaught}", m.uncaught.isEmpty())
     }
 
     /** No cancel: a failed script write is a failure (and still releases the task). */
