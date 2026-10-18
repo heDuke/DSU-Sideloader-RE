@@ -896,7 +896,9 @@ class HomeViewModel @Inject constructor(
         if (taskGate.isBusy()) {
             if (ownerTaskId == null || taskGate.phaseOf(ownerTaskId) != InstallTaskGate.Phase.DSU_APP ||
                 !taskGate.finishIfNotCancelling(ownerTaskId)
-            ) return
+            ) {
+                return
+            }
         }
         taskThatUnmounted = null
         resetInstallationCard()
