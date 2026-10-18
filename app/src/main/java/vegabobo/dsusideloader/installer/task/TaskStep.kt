@@ -46,7 +46,10 @@ object TaskSteps {
         context: CoroutineContext,
         start: CoroutineStart = CoroutineStart.DEFAULT,
         onUnsettled: (cause: Throwable?) -> Unit,
-        /** Exception thrown by the body after it settled (e.g. while handing over). */
+        /**
+         * Anything thrown by the body after it settled (e.g. while handing over), including a
+         * cancellation. Must produce the task's terminal outcome if nobody else owns it.
+         */
         onErrorAfterSettle: (Throwable) -> Unit = {},
         block: suspend CoroutineScope.(TaskStep) -> Unit,
     ): Job {
@@ -55,9 +58,13 @@ object TaskSteps {
             try {
                 block(step)
             } catch (e: CancellationException) {
+                // After settling, the completion fallback no longer runs: whoever settled
+                // (e.g. the hand-over that was interrupted) must still learn about it.
+                if (step.isSettled) onErrorAfterSettle(e)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 if (step.settle()) onUnsettled(e) else onErrorAfterSettle(e)
+                if (e !is Exception) throw e
             }
         }
         // Runs after the coroutine completed, including "cancelled before start".

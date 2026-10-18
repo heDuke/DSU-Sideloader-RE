@@ -24,6 +24,8 @@ class InstallTaskGate {
         val cancelling: Boolean,
         val job: Job = Job(),
         val workspaceKey: String = "",
+        /** Set by [claimTerminal]: a terminal outcome of this task is being produced. */
+        val terminating: Boolean = false,
     )
 
     private var nextId = 1L
@@ -55,6 +57,42 @@ class InstallTaskGate {
     /** The Job of task [id], or null if [id] is not the current task. */
     @Synchronized
     fun jobOf(id: Long): Job? = current?.takeIf { it.id == id }?.job
+
+    /** The phase of task [id], or null if [id] is not the current task. */
+    @Synchronized
+    fun phaseOf(id: Long): Phase? = current?.takeIf { it.id == id }?.phase
+
+    /**
+     * True if nothing has taken over the terminal outcome of task [id] from its preparation
+     * step: the task is current and still [Phase.PREPARING] (no root pipeline / DSU app step
+     * was started). A failure or cancel in that state must be reported by the preparation
+     * side itself, whatever the cancel state is.
+     */
+    @Synchronized
+    fun isOwnedByPreparation(id: Long): Boolean = phaseOf(id) == Phase.PREPARING
+
+    /**
+     * Claims the (asynchronous) terminal outcome of task [id]. @return true for the first
+     * caller only, while [id] is current: a second, concurrent terminal path of the same task
+     * returns false and must do nothing.
+     */
+    @Synchronized
+    fun claimTerminal(id: Long): Boolean {
+        val task = current ?: return false
+        if (task.id != id || task.terminating) return false
+        current = task.copy(terminating = true)
+        return true
+    }
+
+    /**
+     * Releases [id] unless it is being cancelled (used for a successful end, e.g. the ADB
+     * script was generated: a cancel requested meanwhile wins and is reported instead).
+     */
+    @Synchronized
+    fun finishIfNotCancelling(id: Long): Boolean {
+        if (current?.let { it.id == id && !it.cancelling } != true) return false
+        return finish(id)
+    }
 
     /** The workspace directory key of task [id], or null if [id] is not the current task. */
     @Synchronized

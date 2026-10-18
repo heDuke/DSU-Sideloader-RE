@@ -164,4 +164,29 @@ class TaskStepTest {
         withTimeout(3000) { job.join() }
         assertEquals(listOf("ERROR_CANCELED"), c.terminals)
     }
+
+    /** FR1: whatever the body throws after settling (incl. a cancellation) reaches onErrorAfterSettle once. */
+    @Test
+    fun anythingThrownAfterSettleIsReportedOnce() = runBlocking {
+        for (thrown in listOf<Throwable>(
+            java.io.IOException("write failed"),
+            CancellationException("cancelled during hand-over"),
+            AssertionError("not an Exception"),
+        )) {
+            val reported = mutableListOf<Throwable>()
+            val unsettled = AtomicInteger()
+            val job = TaskSteps.launch(
+                CoroutineScope(SupervisorJob()),
+                Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> },
+                onUnsettled = { unsettled.incrementAndGet() },
+                onErrorAfterSettle = { synchronized(reported) { reported += it } },
+            ) { step ->
+                assertTrue(step.settle())
+                throw thrown
+            }
+            withTimeout(3000) { job.join() }
+            assertEquals(thrown.toString(), listOf(thrown), synchronized(reported) { reported.toList() })
+            assertEquals(0, unsettled.get())
+        }
+    }
 }

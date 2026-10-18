@@ -364,7 +364,15 @@ class HomeViewModel @Inject constructor(
             onUnsettled = { cause -> onPreparationStepUnsettled(id, cause) },
             onErrorAfterSettle = { e ->
                 Log.e(tag, "Starting the installation failed", e)
-                onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
+                if (taskGate.isOwnedByPreparation(id)) {
+                    // Settled, but no backend took the task over (e.g. the ADB script could not
+                    // be written, or a parameter read failed before DSU_APP): this step still
+                    // owns the terminal outcome, also when a cancel arrived meanwhile.
+                    onPreparationStepUnsettled(id, e, inStep = true)
+                } else {
+                    // ROOT_INSTALL / DSU_APP: a cancel is reported by that backend's path.
+                    onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
+                }
             },
         ) { step ->
             session.preferences.isUnmountSdCard = readBoolPref(AppPrefs.UMOUNT_SD)
@@ -376,7 +384,9 @@ class HomeViewModel @Inject constructor(
                 taskKey = taskKey,
                 onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
                 onPreparationProgressUpdate = { p -> ifAccepts(id) { onPreparationProgressUpdate(p) } },
-                onCanceled = { if (step.settle()) onPreparationStepUnsettled(id, CancellationException("preparation cancelled")) },
+                onCanceled = {
+                    if (step.settle()) onPreparationStepUnsettled(id, CancellationException("preparation cancelled"), inStep = true)
+                },
                 onPreparationFinished = { if (step.settle()) onPreparationFinished(id, it) },
             ).invoke()
         }
@@ -385,49 +395,75 @@ class HomeViewModel @Inject constructor(
     /**
      * Terminal outcome of a preparation step that did not hand the task over.
      *
-     * The task's own workspace directory is cleaned first (off the caller thread: a
-     * cancel-before-start completes synchronously in the cancelling thread) and the task is
-     * released only after the cleanup finished, so a next task can't start while it runs; a
-     * cleanup failure is part of the reported result.
+     * The task's own workspace directory is cleaned first and the task is released only after
+     * the cleanup finished, so a next task can't start while it runs; a cleanup failure is part
+     * of the reported result. [inStep]: called from inside the task's preparation step (an
+     * IO thread), so the outcome is produced there and the step's Job completes only after the
+     * task was released. Otherwise (completion fallback, which may run in the cancelling main
+     * thread, or other callers) it runs on IO.
+     *
+     * Idempotent: only the first call for a task produces the outcome (claimTerminal), and
+     * the task is released in a finally block, so an exception while cleaning or reporting
+     * can't leave the task lock held.
      */
-    private fun onPreparationStepUnsettled(id: Long, cause: Throwable?) {
+    private fun onPreparationStepUnsettled(id: Long, cause: Throwable?, inStep: Boolean = false) {
         val taskKey = taskGate.workspaceOf(id) ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            val cleanupError = runCatching { storageManager.cleanTaskWorkspace(taskKey, true) }.exceptionOrNull()
-            if (cleanupError != null) Log.w(tag, "Workspace cleanup of task $id failed", cleanupError)
-            val cleanupNote = cleanupError?.let { "Temporary files could not be removed: ${it.message ?: it}" }
-            if (cause is CancellationException || taskGate.isCancelling(id)) {
-                finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, cleanupNote ?: ""))
-                return@launch
+        if (!taskGate.claimTerminal(id)) return
+        fun report() {
+            try {
+                val cleanupError = runCatching { storageManager.cleanTaskWorkspace(taskKey, true) }.exceptionOrNull()
+                if (cleanupError != null) Log.w(tag, "Workspace cleanup of task $id failed", cleanupError)
+                val cleanupNote = cleanupError?.let { "Temporary files could not be removed: ${it.message ?: it}" }
+                if (cause is CancellationException || taskGate.isCancelling(id)) {
+                    // An error that happened after the cancel request is kept as detail.
+                    val lateError = cause?.takeIf { it !is CancellationException }
+                        ?.let { "Error while cancelling: ${it.message ?: it}" }
+                    finishCancelWithOutcome(
+                        id,
+                        InstallOutcome(InstallationStep.ERROR_CANCELED, listOfNotNull(lateError, cleanupNote).joinToString("\n")),
+                    )
+                    return
+                }
+                // Unsupported/corrupt/truncated input, I/O, preference or storage errors. Finished
+                // directly (not via onTaskFailed): a cancel that arrives now must not leave the
+                // task unfinished, nobody else would report it.
+                Log.e(tag, "Preparation failed", cause)
+                val message = cause?.message ?: cause?.toString() ?: "Preparation ended without a result"
+                if (!taskGate.finish(id)) return
+                remountSdCardsIfOwnedBy(id, "preparation error")
+                onInstallationError(InstallationStep.ERROR, listOfNotNull(message, cleanupNote).joinToString("\n"))
+            } finally {
+                // Last resort (reporting itself threw): never keep the task locked.
+                if (taskGate.finish(id)) {
+                    Log.e(tag, "Task $id ended without a reported outcome")
+                    updateInstallationCard {
+                        it.copy(installationStep = InstallationStep.ERROR, errorText = "Installation ended unexpectedly")
+                    }
+                }
             }
-            // Unsupported/corrupt/truncated input, I/O, preference or storage errors. Finished
-            // directly (not via onTaskFailed): a cancel that arrives now must not leave the
-            // task unfinished, nobody else would report it.
-            Log.e(tag, "Preparation failed", cause)
-            val message = cause?.message ?: cause?.toString() ?: "Preparation ended without a result"
-            if (!taskGate.finish(id)) return@launch
-            remountSdCardsIfOwnedBy(id, "preparation error")
-            onInstallationError(InstallationStep.ERROR, listOfNotNull(message, cleanupNote).joinToString("\n"))
         }
+        if (inStep) report() else viewModelScope.launch(Dispatchers.IO) { report() }
     }
 
     private fun onPreparationFinished(id: Long, dsuInstallation: DSUInstallationSource) {
         Log.d(tag, "DSU preparation finished, result: $dsuInstallation")
         if (taskGate.isCancelling(id)) {
-            onTaskCancelledWithoutSystemChanges(id)
+            // Only called from the preparation step (see onConfirmInstallationSheet).
+            onPreparationStepUnsettled(id, CancellationException("cancelled after preparation"), inStep = true)
             return
         }
         if (!taskGate.isCurrent(id)) return
         session.dsuInstallation = dsuInstallation
-        startInstallation(id)
+        startInstallation(id, inStep = true)
     }
 
-    private fun startInstallation(id: Long) {
+    /** [inStep]: called from the task's preparation step (see onPreparationStepUnsettled). */
+    private fun startInstallation(id: Long, inStep: Boolean = false) {
         Log.d(tag, "startInstallation(task $id), session: \n$session")
         ifAccepts(id) { updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) } }
 
         if (session.getOperationMode() == OperationMode.ADB) {
-            setupAdbInstallation(id)
+            setupAdbInstallation(id, inStep)
             return
         }
 
@@ -439,14 +475,19 @@ class HomeViewModel @Inject constructor(
         startPrivilegedInstallation(id)
     }
 
-    private fun setupAdbInstallation(id: Long) {
+    private fun setupAdbInstallation(id: Long, inStep: Boolean = false) {
+        // Runs synchronously in the preparation step while still PREPARING: a write failure
+        // (also after a cancel) is reported by that step's onErrorAfterSettle.
         AdbInstallationHandler(storageManager, session).generate { scriptPath ->
             Log.d(tag, "Installation script generated: $scriptPath")
-            session.installationScriptPath = scriptPath
             // From the app's point of view the task ends here: the user runs the script.
-            if (taskGate.finish(id)) {
+            // A cancel requested while the script was being written wins.
+            if (taskGate.finishIfNotCancelling(id)) {
+                session.installationScriptPath = scriptPath
                 resetInstallationCard()
                 updateInstallationCard { it.copy(installationStep = InstallationStep.REQUIRES_ADB_CMD_TO_CONTINUE) }
+            } else if (taskGate.isCancelling(id)) {
+                onPreparationStepUnsettled(id, CancellationException("cancelled while generating the ADB script"), inStep)
             }
         }
     }
@@ -455,7 +496,7 @@ class HomeViewModel @Inject constructor(
         // The task's own Job (once ROOT_INSTALL, a cancel is reported by the pipeline itself).
         val job = taskGate.jobOf(id)
         if (job == null || !taskGate.setPhase(id, InstallTaskGate.Phase.ROOT_INSTALL)) {
-            if (taskGate.isCancelling(id)) onTaskCancelledWithoutSystemChanges(id)
+            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before install"))
             return
         }
         // Never run the (blocking) installation on the main thread. Not bound to the job:
@@ -493,7 +534,7 @@ class HomeViewModel @Inject constructor(
         // The task's own Job: never a shared field a newer task may have replaced meanwhile.
         val job = taskGate.jobOf(id)
         if (job == null || !taskGate.acceptsUpdates(id)) {
-            if (taskGate.isCancelling(id)) onTaskCancelledWithoutSystemChanges(id)
+            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
             return
         }
         val canTrackResult =
@@ -543,7 +584,7 @@ class HomeViewModel @Inject constructor(
         }
         if (!registered) {
             stepJob.cancel()
-            if (taskGate.isCancelling(id)) onTaskCancelledWithoutSystemChanges(id)
+            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
             return
         }
         ifAccepts(id) {
