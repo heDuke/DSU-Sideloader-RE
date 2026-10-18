@@ -583,7 +583,7 @@ class HomeViewModel @Inject constructor(
                     }
                 }
                 is DsuSubmission.Result.Failed ->
-                    if (step.settle()) onTaskFailed(id, InstallationStep.ERROR, result.message, requestFailed = true)
+                    if (step.settle()) onTaskFailed(id, InstallationStep.ERROR, result.message)
                 // Left unsettled: the completion fallback / cancel path decides.
                 DsuSubmission.Result.Cancelled -> Unit
             }
@@ -619,7 +619,7 @@ class HomeViewModel @Inject constructor(
         if (job == null || !taskGate.acceptsUpdates(id)) return
         logger?.destroy()
         val newLogger = LogcatDiagnostic(
-            onInstallationError = { step, text -> onTaskFailed(id, step, text) },
+            onInstallationError = { step, text -> onTaskFailed(id, step, text, systemReported = true) },
             onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
             onInstallationProgressUpdate = { p, part -> ifAccepts(id) { onInstallationProgressUpdate(p, part) } },
             onInstallationSuccess = { onTaskConfirmedSuccess(id) },
@@ -679,7 +679,7 @@ class HomeViewModel @Inject constructor(
         if (submission.hasReachedSystem) taskGate.markHandedToSystem(id)
         if (taskGate.hasHandedToSystem(id)) {
             // This request or an earlier one of the task reached the system: still unconfirmed.
-            onTaskFailed(id, InstallationStep.ERROR, cause?.toString() ?: "Submission ended without a result", requestFailed = true)
+            onTaskFailed(id, InstallationStep.ERROR, cause?.toString() ?: "Submission ended without a result")
         } else {
             onTaskCancelledWithoutSystemChanges(id)
         }
@@ -754,16 +754,20 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * [requestFailed]: a request (first attempt or retry) failed on our side, before or while
-     * handing it to the system, as opposed to an error reported by the system DSU app.
-     * If a request of this task already reached the system, that installation is still
-     * unconfirmed: the task ends as "submitted, unconfirmed" with this error as detail, the
-     * pending remount record (SYSTEM_UNKNOWN) is kept and storage is only restored by the
-     * explicit restore action (or the app start policy), never automatically here.
+     * The policy follows the task's handoff state, not the caller: if a request of this task
+     * already reached the system and the error comes from our side (a retry, the submission,
+     * log/diagnostic setup, ...), the system installation is still unconfirmed. The task then
+     * ends as "submitted, unconfirmed" with this error as detail, the pending remount record
+     * (SYSTEM_UNKNOWN) is kept and storage is only restored by the explicit restore action (or
+     * the app start policy), never automatically here.
+     *
+     * [systemReported]: the error was reported by the system DSU app itself (logcat), i.e. the
+     * system installation ended; only then the normal error + remount path applies after a
+     * handoff.
      */
-    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String, requestFailed: Boolean = false) {
+    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String, systemReported: Boolean = false) {
         if (taskGate.isCancelling(id)) return // the cancel path reports the terminal state
-        val handedToSystem = requestFailed && taskGate.hasHandedToSystem(id)
+        val handedToSystem = !systemReported && taskGate.hasHandedToSystem(id)
         if (!taskGate.finish(id)) return
         if (handedToSystem) {
             Log.w(tag, "Task $id: request failed after an earlier handoff to the system: $errorContent")
@@ -837,7 +841,7 @@ class HomeViewModel @Inject constructor(
             onPreparationEnded = { id, cause, inStep -> onPreparationStepUnsettled(id, cause, inStep) },
             onTaskFailed = { id, e ->
                 Log.e(tag, "Retry failed", e)
-                onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString(), requestFailed = true)
+                onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
             },
             log = { Log.d(tag, it) },
         )
