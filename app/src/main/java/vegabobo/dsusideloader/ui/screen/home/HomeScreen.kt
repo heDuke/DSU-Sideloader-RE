@@ -123,7 +123,7 @@ fun Home(
                     onClickRebootToDynOS = { homeViewModel.onClickRebootToDynOS() },
                     onClickViewLogs = { homeViewModel.showLogsWarning() },
                     onClickViewCommands = { navigate(Destinations.ADBInstallation) },
-                    onCardAction = { homeViewModel.onInstallationCardAction(it) },
+                    onCardAction = homeViewModel.installationCardActionHandler(uiState.installationCard),
                     minPercentageOfFreeStorage = homeViewModel.allocPercentageInt.toString(),
                 )
                 UserdataCard(

@@ -3,6 +3,8 @@ package vegabobo.dsusideloader.ui.screen.home
 import vegabobo.dsusideloader.preparation.InstallationStep
 
 data class InstallationCardState(
+    /** Task whose result/actions this card displays, retained after that task ends. */
+    val taskId: Long? = null,
     val installationStep: InstallationStep = InstallationStep.NOT_INSTALLING,
     val isTextFieldEnabled: Boolean = true,
     val isInstallable: Boolean = false,
