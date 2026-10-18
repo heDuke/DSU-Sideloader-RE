@@ -566,7 +566,10 @@ class HomeViewModel @Inject constructor(
             start = CoroutineStart.LAZY,
             onUnsettled = { cause -> onSubmissionStepUnsettled(id, cause, submission) },
         ) { step ->
-            when (val result = submission.submit()) {
+            val result = submission.submit()
+            // Kept for the whole task: a later retry can't undo this handoff.
+            if (submission.hasReachedSystem) taskGate.markHandedToSystem(id)
+            when (result) {
                 DsuSubmission.Result.Submitted -> {
                     step.settle()
                     if (!canTrackResult) {
@@ -574,13 +577,13 @@ class HomeViewModel @Inject constructor(
                         // but success can't be confirmed, so never report INSTALL_SUCCESS here.
                         ifAccepts(id) {
                             updateInstallationCard {
-                                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED)
+                                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED, errorText = "")
                             }
                         }
                     }
                 }
                 is DsuSubmission.Result.Failed ->
-                    if (step.settle()) onTaskFailed(id, InstallationStep.ERROR, result.message)
+                    if (step.settle()) onTaskFailed(id, InstallationStep.ERROR, result.message, requestFailed = true)
                 // Left unsettled: the completion fallback / cancel path decides.
                 DsuSubmission.Result.Cancelled -> Unit
             }
@@ -673,8 +676,10 @@ class HomeViewModel @Inject constructor(
     /** Submission step ended without a result (cancelled, or returned without settling). */
     private fun onSubmissionStepUnsettled(id: Long, cause: Throwable?, submission: DsuSubmission) {
         if (taskGate.isCancelling(id)) return // the cancel path waits for this step and decides
-        if (submission.hasReachedSystem) {
-            onTaskFailed(id, InstallationStep.ERROR, cause?.toString() ?: "Submission ended without a result")
+        if (submission.hasReachedSystem) taskGate.markHandedToSystem(id)
+        if (taskGate.hasHandedToSystem(id)) {
+            // This request or an earlier one of the task reached the system: still unconfirmed.
+            onTaskFailed(id, InstallationStep.ERROR, cause?.toString() ?: "Submission ended without a result", requestFailed = true)
         } else {
             onTaskCancelledWithoutSystemChanges(id)
         }
@@ -689,7 +694,9 @@ class HomeViewModel @Inject constructor(
             taskGate.retryJobOf(id)?.let { it.cancel(); it.join() }
             val step = dsuSubmission?.takeIf { it.taskId == id }
             // Wait until the request can no longer unmount storage or open the DSU prompt.
-            val reachedSystem = step?.cancelAndJoin() ?: false
+            // An earlier request of this task that reached the system counts too: a retry
+            // cancelled before its own handoff doesn't end the earlier system installation.
+            val reachedSystem = (step?.cancelAndJoin() ?: false) || taskGate.hasHandedToSystem(id)
             if (!reachedSystem) {
                 finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, ""))
                 return@launch
@@ -746,9 +753,27 @@ class HomeViewModel @Inject constructor(
         updateInstallationCard { it.copy(installationStep = outcome.step, errorText = outcome.detail) }
     }
 
-    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String) {
+    /**
+     * [requestFailed]: a request (first attempt or retry) failed on our side, before or while
+     * handing it to the system, as opposed to an error reported by the system DSU app.
+     * If a request of this task already reached the system, that installation is still
+     * unconfirmed: the task ends as "submitted, unconfirmed" with this error as detail, the
+     * pending remount record (SYSTEM_UNKNOWN) is kept and storage is only restored by the
+     * explicit restore action (or the app start policy), never automatically here.
+     */
+    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String, requestFailed: Boolean = false) {
         if (taskGate.isCancelling(id)) return // the cancel path reports the terminal state
+        val handedToSystem = requestFailed && taskGate.hasHandedToSystem(id)
         if (!taskGate.finish(id)) return
+        if (handedToSystem) {
+            Log.w(tag, "Task $id: request failed after an earlier handoff to the system: $errorContent")
+            if (taskThatUnmounted == id) taskThatUnmounted = null // no automatic remount
+            updateInstallationCard {
+                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED, errorText = errorContent)
+            }
+            refreshStorageRestorePending()
+            return
+        }
         remountSdCardsIfOwnedBy(id, "installation error: $error")
         onInstallationError(error, errorContent)
     }
@@ -812,7 +837,7 @@ class HomeViewModel @Inject constructor(
             onPreparationEnded = { id, cause, inStep -> onPreparationStepUnsettled(id, cause, inStep) },
             onTaskFailed = { id, e ->
                 Log.e(tag, "Retry failed", e)
-                onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
+                onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString(), requestFailed = true)
             },
             log = { Log.d(tag, it) },
         )

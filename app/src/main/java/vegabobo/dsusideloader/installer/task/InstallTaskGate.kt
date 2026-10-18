@@ -28,6 +28,12 @@ class InstallTaskGate {
         val terminating: Boolean = false,
         /** The task's retry step (see [attachRetry]), if one was started. */
         val retryJob: Job? = null,
+        /**
+         * Some request of this task reached the system DSU app (see [markHandedToSystem]).
+         * Never reset while the task lives: a later request (retry) that fails or is cancelled
+         * before its own handoff doesn't end what an earlier request started.
+         */
+        val handedToSystem: Boolean = false,
     )
 
     private var nextId = 1L
@@ -95,6 +101,17 @@ class InstallTaskGate {
         if (current?.let { it.id == id && !it.cancelling } != true) return false
         return finish(id)
     }
+
+    /** A request of task [id] reached the system DSU app (startActivity called or in progress). */
+    @Synchronized
+    fun markHandedToSystem(id: Long) {
+        val task = current ?: return
+        if (task.id == id) current = task.copy(handedToSystem = true)
+    }
+
+    /** True if any request of task [id] (the current task) was handed to the system. */
+    @Synchronized
+    fun hasHandedToSystem(id: Long): Boolean = current?.let { it.id == id && it.handedToSystem } ?: false
 
     /**
      * Registers the retry step of task [id], created by [create] under the gate lock, if [id]
