@@ -1,17 +1,27 @@
 package vegabobo.dsusideloader.ui.screen.settings
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.preferences.AppPrefs
 import vegabobo.dsusideloader.ui.components.ApplicationScreen
+import vegabobo.dsusideloader.ui.components.CardBox
 import vegabobo.dsusideloader.ui.components.DialogLikeBottomSheet
 import vegabobo.dsusideloader.ui.components.PreferenceItem
 import vegabobo.dsusideloader.ui.components.Title
@@ -20,7 +30,7 @@ import vegabobo.dsusideloader.ui.screen.Destinations
 import vegabobo.dsusideloader.util.OperationMode
 import vegabobo.dsusideloader.util.collectAsStateWithLifecycle
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun Settings(
     navigate: (String) -> Unit,
@@ -41,6 +51,25 @@ fun Settings(
             )
         },
     ) {
+        CardBox(modifier = Modifier.padding(horizontal = 16.dp), cardTitle = stringResource(R.string.re_appearance)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("system" to R.string.re_theme_system, "light" to R.string.re_theme_light, "dark" to R.string.re_theme_dark).forEach { (mode, label) ->
+                    FilterChip(
+                        selected = uiState.themeMode == mode,
+                        onClick = { settingsViewModel.setThemeMode(mode) },
+                        label = { Text(stringResource(label)) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    )
+                }
+            }
+            PreferenceItem(
+                title = stringResource(R.string.re_brand_colors),
+                description = stringResource(R.string.re_brand_help),
+                showToggle = true,
+                isChecked = uiState.preferences[AppPrefs.FIXED_BRAND_COLORS] == true,
+                onClick = { settingsViewModel.togglePreference(AppPrefs.FIXED_BRAND_COLORS, !it) },
+            )
+        }
         Title(title = stringResource(id = R.string.installation))
         PreferenceItem(
             title = stringResource(id = R.string.builtin_installer),

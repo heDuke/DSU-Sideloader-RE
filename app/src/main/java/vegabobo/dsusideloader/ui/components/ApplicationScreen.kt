@@ -63,12 +63,13 @@ fun ApplicationScreen(
                 if (columnContent) {
                     Column(
                         modifier = modifier
-                            .padding(top = innerPadding.calculateTopPadding())
+                            .fillMaxSize()
+                            .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
                             .then(scrollModifier),
                         verticalArrangement = verticalArrangement,
                     ) {
                         content()
-                        Spacer(modifier = Modifier.padding(innerPadding.calculateBottomPadding()))
+                        Spacer(modifier = Modifier.padding(bottom = 16.dp))
                     }
                 } else {
                     Surface(modifier = modifier.padding(top = innerPadding.calculateTopPadding())) {

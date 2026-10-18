@@ -16,6 +16,7 @@ fun InstallationCardStep(
     textFieldInteraction: MutableInteractionSource,
     minPercentageOfFreeStorage: String = "40",
     onClickClear: () -> Unit,
+    onClickSelectFile: () -> Unit,
     onClickInstall: () -> Unit,
     onClickRetryInstallation: () -> Unit,
     onClickUnmountSdCardAndRetry: () -> Unit,
@@ -34,6 +35,7 @@ fun InstallationCardStep(
                 textFieldInteraction = textFieldInteraction,
                 uiState = uiState,
                 onClickClear = onClickClear,
+                onClickSelectFile = onClickSelectFile,
                 onClickInstall = onClickInstall,
             )
         InstallationStep.DSU_ALREADY_INSTALLED ->

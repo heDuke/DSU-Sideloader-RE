@@ -1,12 +1,13 @@
 package vegabobo.dsusideloader.ui.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -14,10 +15,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun PreferenceItem(
@@ -29,52 +29,21 @@ fun PreferenceItem(
     showToggle: Boolean = false,
     isEnabled: Boolean = true,
 ) {
+    val interaction = if (showToggle) {
+        Modifier.toggleable(value = isChecked, enabled = isEnabled, role = Role.Switch, onValueChange = { onClick(isChecked) })
+    } else {
+        Modifier.clickable(enabled = isEnabled) { onClick(isChecked) }
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = { onClick(isChecked) }, enabled = isEnabled)
-            .padding(
-                start = 17.dp,
-                end = 17.dp,
-                bottom = 12.dp,
-                top = 12.dp,
-            ),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth().then(interaction).heightIn(min = 72.dp).padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.padding(end = 22.dp),
-            )
+        if (icon != null) Icon(icon, contentDescription = null)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (description.isNotEmpty()) Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(modifier = Modifier.weight(0.5F)) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterVertically),
-            ) {
-                Text(
-                    text = title,
-                    fontSize = 20.sp,
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-                if (description.isNotEmpty()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.alpha(0.60F),
-                    )
-                }
-            }
-        }
-        if (showToggle) {
-            Switch(
-                checked = isChecked,
-                enabled = isEnabled,
-                onCheckedChange = { onClick(isChecked) },
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
+        if (showToggle) Switch(checked = isChecked, onCheckedChange = null, enabled = isEnabled)
     }
 }

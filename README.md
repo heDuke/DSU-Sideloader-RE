@@ -1,5 +1,9 @@
 # DSU Sideloader
 
+> Renovation in progress on this fork. See [implementation status and remaining work](docs/RENOVATION_STATUS.md). Draft builds are not device-validated releases. The screenshots below show the original upstream UI.
+>
+> 此 fork 正在翻新。已实现内容和待完成项见[实施状态](docs/RENOVATION_STATUS.md)；Draft 构建尚未通过设备验收。下方截图为上游原界面。
+
 A simple app made to help users easily install GSIs via DSU's Android feature.
 <div>
 <img src="https://raw.githubusercontent.com/VegaBobo/DSU-Sideloader/master/other/preview_1.png" alt="preview" width="200"/>  

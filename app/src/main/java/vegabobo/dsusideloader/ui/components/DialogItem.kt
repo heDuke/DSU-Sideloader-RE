@@ -12,7 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -30,7 +29,7 @@ fun DialogItem(
                 .padding(end = 6.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             imageVector = icon,
-            contentDescription = "Icon",
+            contentDescription = null,
         )
         Column(Modifier.padding(4.dp)) {
             Text(
@@ -41,8 +40,6 @@ fun DialogItem(
             Text(
                 color = textColor,
                 text = text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }

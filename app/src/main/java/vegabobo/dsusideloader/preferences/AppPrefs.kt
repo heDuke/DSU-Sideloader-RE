@@ -23,4 +23,7 @@ object AppPrefs {
 
     // Volumes unmounted for an installation that still have to be remounted.
     const val PENDING_SD_REMOUNT = "pending_sd_remount"
+    const val IMAGE_LIBRARY = "image_library_v1"
+    const val THEME_MODE = "theme_mode"
+    const val FIXED_BRAND_COLORS = "fixed_brand_colors"
 }

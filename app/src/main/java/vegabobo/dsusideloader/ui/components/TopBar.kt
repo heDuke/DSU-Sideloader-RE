@@ -10,6 +10,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import vegabobo.dsusideloader.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -17,7 +19,7 @@ fun TopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
     barTitle: String,
     icon: ImageVector? = null,
-    iconContentDescription: String? = "icon",
+    iconContentDescription: String? = null,
     onClickIcon: () -> Unit = {},
     onClickBackButton: (() -> Unit)? = null,
 ) {
@@ -28,7 +30,7 @@ fun TopBar(
                 IconButton(onClickBackButton) {
                     Icon(
                         imageVector = Icons.Outlined.ArrowBack,
-                        contentDescription = iconContentDescription,
+                        contentDescription = stringResource(R.string.re_back),
                     )
                 }
             }

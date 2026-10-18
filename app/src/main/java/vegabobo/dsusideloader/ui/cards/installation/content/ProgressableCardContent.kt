@@ -1,7 +1,9 @@
 package vegabobo.dsusideloader.ui.cards.installation.content
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import vegabobo.dsusideloader.ui.components.buttons.PrimaryButton
 import vegabobo.dsusideloader.ui.components.buttons.SecondaryButton
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProgressableCardContent(
     text: String,
@@ -39,8 +42,7 @@ fun ProgressableCardContent(
         }
     }
     Spacer(modifier = Modifier.padding(top = 4.dp))
-    Row {
-        Spacer(modifier = Modifier.weight(1F))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (onClickSecondButton != null) {
             SecondaryButton(
                 text = textSecondButton,

@@ -5,7 +5,7 @@ on:
     branches: [ "master" ]
   pull_request:
     # Base branches of the stacked installer and device-validation PRs.
-    branches: [ "master", "fix/p0-installer-correctness", "fix/retry-entry-guard", "fix/card-action-ownership" ]
+    branches: [ "master", "fix/p0-installer-correctness", "fix/retry-entry-guard", "fix/card-action-ownership", "feat/loader-install-plans" ]
 
 jobs:
   build:

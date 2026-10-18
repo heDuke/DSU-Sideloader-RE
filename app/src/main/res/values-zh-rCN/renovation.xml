@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- New renovation copy: English and Simplified Chinese; other translations pending. -->
+    <string name="re_nav_overview" tools:ignore="MissingTranslation">概览</string>
+    <string name="re_nav_images" tools:ignore="MissingTranslation">镜像库</string>
+    <string name="re_nav_tasks" tools:ignore="MissingTranslation">任务</string>
+    <string name="re_nav_tools" tools:ignore="MissingTranslation">工具</string>
+    <string name="re_hero_title" tools:ignore="MissingTranslation">另一个 Android，你的独立空间。</string>
+    <string name="re_hero_body" tools:ignore="MissingTranslation">选择镜像、检查环境，确认安装方案后再继续。</string>
+    <string name="re_environment" tools:ignore="MissingTranslation">当前权限模式：%1$s</string>
+    <string name="re_plan_steps" tools:ignore="MissingTranslation">选择 → 配置 → 确认 → 安装 → 核实</string>
+    <string name="re_backend" tools:ignore="MissingTranslation">安装后端</string>
+    <string name="re_backend_auto" tools:ignore="MissingTranslation">自动推荐</string>
+    <string name="re_backend_system" tools:ignore="MissingTranslation">系统 DSU</string>
+    <string name="re_backend_root" tools:ignore="MissingTranslation">Root 直连</string>
+    <string name="re_backend_help" tools:ignore="MissingTranslation">准备开始时固定后端。系统 DSU 可能需要确认或 ADB 命令；直连需要 Root 和 Android 11 以上。</string>
+    <string name="re_integrity" tools:ignore="MissingTranslation">镜像完整性</string>
+    <string name="re_sha_label" tools:ignore="MissingTranslation">预期 SHA-256（可选）</string>
+    <string name="re_sha_help" tools:ignore="MissingTranslation">填写所选文件本身的哈希（压缩镜像填写压缩文件的哈希）。验证副本保存在任务目录，需要额外空间和时间。</string>
+    <string name="re_sha_invalid" tools:ignore="MissingTranslation">请输入 64 位十六进制字符。</string>
+    <string name="re_save_preset" tools:ignore="MissingTranslation">保存此镜像的预设</string>
+    <string name="re_note" tools:ignore="MissingTranslation">备注（可选）</string>
+    <string name="re_preset_help" tools:ignore="MissingTranslation">为此来源保存 userdata 容量、后端、哈希和备注。下次从镜像库打开即可应用。</string>
+    <string name="re_library_title" tools:ignore="MissingTranslation">你的镜像收藏</string>
+    <string name="re_library_empty" tools:ignore="MissingTranslation">从这里选择下一个系统</string>
+    <string name="re_library_body" tools:ignore="MissingTranslation">添加本地镜像，为每个镜像保存预设。条目引用原始文档，不代表额外的可启动 DSU 槽位。</string>
+    <string name="re_add_image" tools:ignore="MissingTranslation">添加镜像</string>
+    <string name="re_open_image" tools:ignore="MissingTranslation">使用此镜像</string>
+    <string name="re_favorite" tools:ignore="MissingTranslation">加入收藏</string>
+    <string name="re_unfavorite" tools:ignore="MissingTranslation">取消收藏</string>
+    <string name="re_remove_image" tools:ignore="MissingTranslation">移除镜像条目</string>
+    <string name="re_remove_body" tools:ignore="MissingTranslation">移除此条目和预设？原始镜像文件会保留。</string>
+    <string name="re_import" tools:ignore="MissingTranslation">导入预设</string>
+    <string name="re_export" tools:ignore="MissingTranslation">导出预设</string>
+    <string name="re_library_transfer" tools:ignore="MissingTranslation">导出包含文档引用和备注，不包含镜像文件或授权。文档授权失效时，需要重新选择镜像。</string>
+    <string name="re_saved_options" tools:ignore="MissingTranslation">%1$d GiB userdata · %2$s</string>
+    <string name="re_tasks_title" tools:ignore="MissingTranslation">当前安装</string>
+    <string name="re_tasks_body" tools:ignore="MissingTranslation">这里显示本次应用会话的任务。已提交的请求，在核对系统结果之前仍为未确认。</string>
+    <string name="re_tasks_idle" tools:ignore="MissingTranslation">本次应用会话没有正在运行的安装。可在概览或镜像库中选择镜像开始。</string>
+    <string name="re_view_task" tools:ignore="MissingTranslation">查看任务</string>
+    <string name="re_tools_title" tools:ignore="MissingTranslation">了解当前环境</string>
+    <string name="re_tools_body" tools:ignore="MissingTranslation">查看权限模式、安装日志和系统 DSU 指南。</string>
+    <string name="re_logs_empty" tools:ignore="MissingTranslation">本次会话还没有安装日志。</string>
+    <string name="re_help" tools:ignore="MissingTranslation">Android DSU 指南</string>
+    <string name="re_appearance" tools:ignore="MissingTranslation">外观</string>
+    <string name="re_theme_mode" tools:ignore="MissingTranslation">主题</string>
+    <string name="re_theme_system" tools:ignore="MissingTranslation">跟随系统</string>
+    <string name="re_theme_light" tools:ignore="MissingTranslation">浅色</string>
+    <string name="re_theme_dark" tools:ignore="MissingTranslation">深色</string>
+    <string name="re_brand_colors" tools:ignore="MissingTranslation">使用品牌配色</string>
+    <string name="re_brand_help" tools:ignore="MissingTranslation">关闭后，在 Android 12 以上使用壁纸动态配色。</string>
+    <string name="re_back" tools:ignore="MissingTranslation">返回</string>
+    <string name="re_gib" tools:ignore="MissingTranslation">%1$d GiB</string>
+    <string name="re_options" tools:ignore="MissingTranslation">自定义安装方案</string>
+    <string name="re_advanced" tools:ignore="MissingTranslation">高级镜像大小</string>
+    <string name="re_status_ready" tools:ignore="MissingTranslation">可以开始准备</string>
+    <string name="re_status_task" tools:ignore="MissingTranslation">安装状态</string>
+    <string name="re_no_device_validation" tools:ignore="MissingTranslation">尚待设备验证</string>
+</resources>

@@ -3,9 +3,15 @@ package vegabobo.dsusideloader.ui.cards
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +25,7 @@ import vegabobo.dsusideloader.ui.components.CardBox
 import vegabobo.dsusideloader.ui.components.FileSelectionBox
 import vegabobo.dsusideloader.ui.screen.home.UserDataCardState
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun UserdataCard(
     isEnabled: Boolean,
@@ -35,6 +42,20 @@ fun UserdataCard(
         isToggleChecked = uiState.isSelected,
         onCheckedChange = onCheckedChange,
     ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(2, 4, 8, 16).forEach { gib ->
+                FilterChip(
+                    selected = if (uiState.text.isEmpty()) gib == 2 else uiState.text == "${gib}GB",
+                    enabled = !isEnabled,
+                    onClick = {
+                        if (!uiState.isSelected) onCheckedChange(true)
+                        onValueChange(gib.toString())
+                    },
+                    label = { Text(stringResource(R.string.re_gib, gib)) },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+            }
+        }
         AnimatedVisibility(
             visible = uiState.isSelected,
             enter = expandVertically(),
