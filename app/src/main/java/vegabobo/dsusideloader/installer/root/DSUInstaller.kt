@@ -5,11 +5,13 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.os.SharedMemory
 import android.util.Log
+import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
 import java.net.URL
 import java.nio.ByteBuffer
 import kotlinx.coroutines.Job
+import org.apache.commons.compress.archivers.zip.ZipFile
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Type
@@ -127,6 +129,20 @@ class DSUInstaller(
             ?: throw FileNotFoundException("Unable to open $uri")
     }
 
+    /** Reads the ZIP central directory of a seekable local document (no decompression). */
+    private fun readZipCatalog(uri: Uri): List<ZipCatalogEntry>? {
+        val pfd = application.contentResolver.openFileDescriptor(uri, "r") ?: return null
+        pfd.use {
+            FileInputStream(it.fileDescriptor).use { fis ->
+                ZipFile(fis.channel).use { zip ->
+                    return zip.entries.toList().map { e ->
+                        ZipCatalogEntry(e.name, e.isDirectory, e.size)
+                    }
+                }
+            }
+        }
+    }
+
     private fun buildSource(): DsuImageSource? {
         return when (dsuInstallation.type) {
             Type.SINGLE_SYSTEM_IMAGE -> DsuImageSource.SingleImage(
@@ -143,7 +159,9 @@ class DSUInstaller(
                 },
             )
 
-            Type.DSU_PACKAGE -> DsuImageSource.ZipPackage { openInputStream(dsuInstallation.uri) }
+            Type.DSU_PACKAGE -> DsuImageSource.ZipPackage(
+                catalog = { readZipCatalog(dsuInstallation.uri) },
+            ) { openInputStream(dsuInstallation.uri) }
             Type.URL -> DsuImageSource.ZipPackage { URL(dsuInstallation.uri.toString()).openStream() }
             Type.NONE -> null
         }

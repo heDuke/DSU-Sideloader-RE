@@ -47,8 +47,21 @@ sealed class DsuImageSource {
 
     class SingleImage(val image: Image) : DsuImageSource()
     class MultipleImages(val images: List<Image>) : DsuImageSource()
-    class ZipPackage(val open: () -> InputStream) : DsuImageSource()
+
+    /**
+     * @param catalog optional central-directory listing (cheap for seekable local files).
+     * It supplies sizes for streamed entries whose local header has no size (data
+     * descriptor). The streamed data is still checked against the actual bytes read and
+     * ZipInputStream's CRC/size verification.
+     */
+    class ZipPackage(
+        val catalog: (() -> List<ZipCatalogEntry>?)? = null,
+        val open: () -> InputStream,
+    ) : DsuImageSource()
 }
+
+/** One entry of a ZIP central directory. [size] is the uncompressed size, -1 if unknown. */
+data class ZipCatalogEntry(val name: String, val isDirectory: Boolean, val size: Long)
 
 /** Terminal result of a root installation. Exactly one is produced per run. */
 sealed class DsuInstallResult {
@@ -134,7 +147,7 @@ class DsuInstallPipeline(
             when (source) {
                 is DsuImageSource.SingleImage -> installImages(listOf(source.image))
                 is DsuImageSource.MultipleImages -> installImages(source.images)
-                is DsuImageSource.ZipPackage -> installZip(source.open)
+                is DsuImageSource.ZipPackage -> installZip(source.open, loadCatalog(source))
             }
             checkCancelled()
             if (!backend.finishInstallation()) {
@@ -261,7 +274,15 @@ class DsuInstallPipeline(
         if (installed == 0) fail(InstallationStep.ERROR, "No installable image found")
     }
 
-    private fun installZip(open: () -> InputStream) {
+    private fun loadCatalog(source: DsuImageSource.ZipPackage): List<ZipCatalogEntry>? =
+        try {
+            source.catalog?.invoke()
+        } catch (e: Exception) {
+            log("ZIP central directory unavailable, streaming only: $e")
+            null
+        }
+
+    private fun installZip(open: () -> InputStream, catalog: List<ZipCatalogEntry>?) {
         // use{} on the ZipInputStream itself so its Inflater is released deterministically
         // (closing it also closes the underlying stream), on success and on every failure.
         zipStreamFactory(open()).use { zis ->
@@ -272,11 +293,24 @@ class DsuInstallPipeline(
                 val entry = zis.nextEntry ?: break
                 when (val decision = tracker.decide(entry.name, entry.isDirectory)) {
                     is DsuPartitionPolicy.Decision.Install -> {
-                        // entry.size is -1 for streamed (data descriptor) entries. Pass it
-                        // through: installImage reads the sparse header first and only rejects
-                        // raw images whose size is still unknown.
-                        log("Installing: ${entry.name} (zip size: ${entry.size})")
-                        installImage(decision.partition, entry.size, NonClosingInputStream(zis))
+                        // entry.size is -1 for streamed (data descriptor) entries. Use the
+                        // central directory size if available, else pass -1 through:
+                        // installImage detects the format first (sparse header provides the
+                        // size) and only rejects raw images whose size is still unknown.
+                        val sizeHint = if (entry.size >= 0) entry.size else catalogSize(catalog, entry.name)
+                        log("Installing: ${entry.name} (zip size: ${entry.size}, hint: $sizeHint)")
+                        installImage(
+                            decision.partition,
+                            sizeHint,
+                            NonClosingInputStream(zis),
+                            unknownRawSizeMessage = "${entry.name} is a raw image stored as a streamed ZIP " +
+                                "entry without a recorded uncompressed size; this is not supported. " +
+                                "Repack the ZIP with sizes in the local headers, or use a sparse image.",
+                        ) {
+                            // Read the rest of the entry so ZipInputStream verifies CRC-32 and
+                            // sizes (data descriptor) before the partition is closed.
+                            drainEntry(zis, entry.name)
+                        }
                         installed++
                     }
                     is DsuPartitionPolicy.Decision.Skip -> log("Skipping ${entry.name}: ${decision.reason}")
@@ -287,12 +321,42 @@ class DsuInstallPipeline(
         }
     }
 
-    private fun installImage(partition: String, sizeHint: Long, input: InputStream) {
+    private fun catalogSize(catalog: List<ZipCatalogEntry>?, name: String): Long {
+        val matches = catalog?.filter { it.name == name && !it.isDirectory } ?: return -1
+        return if (matches.size == 1) matches[0].size else -1
+    }
+
+    private fun drainEntry(zis: ZipInputStream, name: String) {
+        val buf = ByteArray(8192)
+        var extra = 0L
+        while (true) {
+            val n = zis.read(buf)
+            if (n < 0) break
+            extra += n
+        }
+        if (extra > 0) log("$name: ignored $extra trailing bytes after the image data")
+    }
+
+    private fun installImage(
+        partition: String,
+        sizeHint: Long,
+        input: InputStream,
+        unknownRawSizeMessage: String? = null,
+        beforeClose: () -> Unit = {},
+    ) {
         checkCancelled()
+        // Detect the format first: a sparse header carries the (validated) unsparse size.
         val sis = SparseInputStream(BufferedInputStream(input))
-        val partitionSize = if (sis.unsparseSize != -1L) sis.unsparseSize else sizeHint
+        val isSparse = sis.unsparseSize != -1L
+        val partitionSize = if (isSparse) sis.unsparseSize else sizeHint
         if (partitionSize <= 0) {
-            fail(InstallationStep.ERROR, "Unknown or invalid size for $partition: $partitionSize")
+            if (!isSparse && sizeHint < 0) {
+                fail(
+                    InstallationStep.ERROR,
+                    unknownRawSizeMessage ?: "Unknown uncompressed size for raw image $partition",
+                )
+            }
+            fail(InstallationStep.ERROR, "Invalid size for $partition: $partitionSize")
         }
         listener.onCreatePartition(partition)
         createPartition(partition, partitionSize, readOnly = true)
@@ -329,6 +393,7 @@ class DsuInstallPipeline(
                 "$partition image is truncated: wrote $installedSize of $partitionSize bytes",
             )
         }
+        beforeClose()
         closePartition(partition)
         log("Partition $partition installed, readOnly: true, partitionSize: $partitionSize")
     }

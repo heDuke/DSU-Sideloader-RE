@@ -394,6 +394,58 @@ class DsuInstallPipelineTest {
     }
 
     @Test
+    fun zipRawEntryWithUnknownSizeReportsExactUnsupportedReason() {
+        val b = FakeBackend()
+        val data = zip("system.img" to payload, stored = false)
+        val r = run(b, DsuImageSource.ZipPackage { ByteArrayInputStream(data) })
+        assertTrue(r is DsuInstallResult.Failed)
+        assertTrue((r as DsuInstallResult.Failed).info.contains("not supported"))
+    }
+
+    @Test
+    fun zipRawEntryWithUnknownSizeUsesCentralDirectorySize() {
+        val b = FakeBackend()
+        val data = zip("system.img" to payload, stored = false)
+        val catalog = { listOf(ZipCatalogEntry("system.img", false, payload.size.toLong())) }
+        val r = run(b, DsuImageSource.ZipPackage(catalog) { ByteArrayInputStream(data) })
+        assertEquals(DsuInstallResult.Success, r)
+        assertTrue(payload.contentEquals(b.written["system"]!!.toByteArray()))
+    }
+
+    @Test
+    fun zipCentralDirectorySizeMismatchFails() {
+        val b = FakeBackend()
+        val data = zip("system.img" to payload, stored = false)
+        val catalog = { listOf(ZipCatalogEntry("system.img", false, payload.size + 10L)) }
+        assertFailedWithCleanup(
+            b,
+            run(b, DsuImageSource.ZipPackage(catalog) { ByteArrayInputStream(data) }),
+            InstallationStep.ERROR,
+        )
+    }
+
+    @Test
+    fun zipCrcIsVerifiedEvenWhenSparseParsingStopsEarly() {
+        // STORED sparse entry followed by padding; corrupt a padding byte. Sparse parsing never
+        // reads it, only the ZIP CRC check catches it -> must fail before closePartition.
+        val b = FakeBackend()
+        val img = sparseImage(blockSize = 8, rawBlocks = 2, dontCareBlocks = 0) + ByteArray(16)
+        val data = zip("system.img" to img)
+        val idx = indexOf(data, img) + img.size - 1
+        data[idx] = 0x55
+        assertFailedWithCleanup(b, run(b, DsuImageSource.ZipPackage { ByteArrayInputStream(data) }), InstallationStep.ERROR)
+        assertFalse(b.calls.contains("close:system"))
+    }
+
+    private fun indexOf(haystack: ByteArray, needle: ByteArray): Int {
+        outer@ for (i in 0..haystack.size - needle.size) {
+            for (j in needle.indices) if (haystack[i + j] != needle[j]) continue@outer
+            return i
+        }
+        error("not found")
+    }
+
+    @Test
     fun truncatedZipFails() {
         val b = FakeBackend()
         val data = zip("system.img" to ByteArray(1000) { 1 })
