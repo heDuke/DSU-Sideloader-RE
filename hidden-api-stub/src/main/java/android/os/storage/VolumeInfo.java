@@ -5,6 +5,8 @@ import android.os.Parcelable;
 
 public class VolumeInfo implements Parcelable {
     public String id;
+    /** Real framework field (STATE_MOUNTED = 2, STATE_MOUNTED_READ_ONLY = 3). */
+    public int state;
 
     protected VolumeInfo(Parcel in) {
         id = in.readString();

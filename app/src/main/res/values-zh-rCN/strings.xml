@@ -177,4 +177,17 @@
     <string name="discard">移除</string>
     <string name="close_app">关闭 DSU Sideloader</string>
     <string name="close_app_question">确定要关闭 DSU Sideloader 么？</string>
+    <string name="installation_submitted_unconfirmed">请求已交给系统，尚未确认安装完成。请在系统 DSU 页面确认，并查看通知中的进度。</string>
+    <string name="cancelling_installation">正在取消并清理…</string>
+    <string name="cleanup_incomplete">未清理完成/状态未知。\n%1$s\n\n下一步：查看 DSU 通知及已安装 DSU 的状态；再次安装前先丢弃残留的 DSU（无法丢弃时请重启设备）。</string>
+    <string name="installation_submitted_unconfirmed_details">详情：没有 READ_LOGS 权限，本应用无法读取系统 DSU 的安装进度。</string>
+    <string name="done_in_system_dsu">已在系统中完成或取消</string>
+    <string name="restore_storage">恢复存储</string>
+    <string name="later">稍后</string>
+    <string name="storage_restore_prompt">为安装 DSU 卸载的 SD 卡尚未恢复，因为该次安装的结果未知。请先在系统 DSU 页面（或其通知）中完成或取消安装，然后点击“恢复存储”。</string>
+    <string name="storage_restore_blocked">系统仍报告有 DSU 安装正在进行。请先完成或取消。</string>
+    <string name="storage_restore_failed">恢复失败：%1$s。请重试，或重新插入存储卡/重启设备。</string>
+    <string name="verifying_image_size">正在校验并计算镜像大小</string>
+    <string name="skipped_images">未安装（DSU 不支持）：%1$s</string>
+    <string name="cancel_cleanup_unverified">已请求取消，清理结果无法确认。\n%1$s\n\n下一步：查看 DSU 通知；再次安装前先丢弃残留的 DSU（无法丢弃时请重启设备）。</string>
 </resources>

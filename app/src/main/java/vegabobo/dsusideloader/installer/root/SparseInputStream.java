@@ -84,7 +84,17 @@ public class SparseInputStream extends InputStream {
     private long mTotalChunks;
     private SparseChunk mCur;
     private long mLeft;
-    private int mCurChunks;
+    private long mCurChunks;
+    // Blocks declared by the chunks read so far; must end up equal to mTotalBlocks.
+    private long mBlocksSeen;
+
+    /*
+     * Local hardening (not in AOSP): header fields are read as unsigned, every chunk's
+     * total_size must match its type and chunk_size, the chunks must cover exactly
+     * total_blks blocks, and a RAW chunk ending early is reported as truncation instead of
+     * a silent EOF. Any inconsistency throws IOException, so a corrupt or truncated sparse
+     * image can never be written as if it were complete.
+     */
 
     public SparseInputStream(BufferedInputStream in) throws IOException {
         mIn = in;
@@ -108,30 +118,65 @@ public class SparseInputStream extends InputStream {
         if (buf.getShort() != CHUNK_HDR_SIZE) {
             throw new IOException("Illegal chunk header size");
         }
-        mBlockSize = buf.getInt();
-        if ((mBlockSize & 0x3) != 0) {
-            throw new IOException("Illegal block size, must be a multiple of 4");
+        mBlockSize = Integer.toUnsignedLong(buf.getInt());
+        if (mBlockSize == 0 || (mBlockSize & 0x3) != 0) {
+            throw new IOException("Illegal block size, must be a non-zero multiple of 4");
         }
-        mTotalBlocks = buf.getInt();
-        mTotalChunks = buf.getInt();
-        mLeft = mCurChunks = 0;
+        mTotalBlocks = Integer.toUnsignedLong(buf.getInt());
+        mTotalChunks = Integer.toUnsignedLong(buf.getInt());
+        mLeft = mCurChunks = mBlocksSeen = 0;
     }
 
     /**
-     * Check if it needs to open a new chunk.
+     * Opens chunks until one with data remains (zero-length chunks are skipped).
      *
-     * @return true if it's EOF
+     * @return true if it's EOF (all declared chunks consumed and fully validated)
      */
     private boolean prepareChunk() throws IOException {
-        if (mCur == null || mLeft <= 0) {
-            if (++mCurChunks > mTotalChunks) return true;
+        while (mCur == null || mLeft <= 0) {
+            if (mCurChunks >= mTotalChunks) {
+                if (mBlocksSeen != mTotalBlocks) {
+                    throw new IOException("Sparse chunks cover " + mBlocksSeen
+                            + " blocks but header declares " + mTotalBlocks);
+                }
+                return true;
+            }
+            mCurChunks++;
             mCur = readChunk(mIn);
+            long chunkBlocks = Integer.toUnsignedLong(mCur.mChunkSize);
+            long totalSize = Integer.toUnsignedLong(mCur.mTotalSize);
+            long expected;
+            switch (mCur.mChunkType) {
+                case SparseChunk.RAW:
+                    expected = CHUNK_HDR_SIZE + chunkBlocks * mBlockSize;
+                    break;
+                case SparseChunk.FILL:
+                    expected = CHUNK_HDR_SIZE + 4;
+                    break;
+                case SparseChunk.DONTCARE:
+                    expected = CHUNK_HDR_SIZE;
+                    break;
+                default:
+                    throw new IOException("Unsupported Chunk:" + mCur.toString());
+            }
+            if (totalSize != expected) {
+                throw new IOException("Inconsistent sparse chunk (" + mCur
+                        + "), expected total_size " + expected);
+            }
+            mBlocksSeen += chunkBlocks;
+            if (mBlocksSeen > mTotalBlocks) {
+                throw new IOException("Sparse chunks exceed declared " + mTotalBlocks + " blocks");
+            }
             if (mCur.mChunkType == SparseChunk.FILL) {
                 mCur.fill = readFull(mIn, 4);
             }
-            mLeft = mCur.mChunkSize * mBlockSize;
+            mLeft = chunkBlocks * mBlockSize;
         }
-        return mLeft == 0;
+        return false;
+    }
+
+    private byte fillByte() {
+        return mCur.fill[(4 - ((int) mLeft & 0x3)) & 0x3];
     }
 
     @Override
@@ -139,11 +184,16 @@ public class SparseInputStream extends InputStream {
         if (!mIsSparse) {
             return mIn.read(buf, off, len);
         }
+        if (len == 0) return 0;
         if (prepareChunk()) return -1;
-        int n = -1;
+        int n;
         switch (mCur.mChunkType) {
             case SparseChunk.RAW:
                 n = mIn.read(buf, off, (int) min(mLeft, len));
+                if (n < 0) {
+                    throw new IOException("Truncated sparse image: RAW chunk ended "
+                            + mLeft + " bytes early");
+                }
                 mLeft -= n;
                 return n;
             case SparseChunk.DONTCARE:
@@ -152,8 +202,12 @@ public class SparseInputStream extends InputStream {
                 mLeft -= n;
                 return n;
             case SparseChunk.FILL:
-                // The FILL type is rarely used, so use a simple implmentation.
-                return super.read(buf, off, len);
+                n = (int) min(mLeft, len);
+                for (int i = 0; i < n; i++) {
+                    buf[off + i] = fillByte();
+                    mLeft--;
+                }
+                return n;
             default:
                 throw new IOException("Unsupported Chunk:" + mCur.toString());
         }
@@ -165,16 +219,20 @@ public class SparseInputStream extends InputStream {
             return mIn.read();
         }
         if (prepareChunk()) return -1;
-        int ret = -1;
+        int ret;
         switch (mCur.mChunkType) {
             case SparseChunk.RAW:
                 ret = mIn.read();
+                if (ret < 0) {
+                    throw new IOException("Truncated sparse image: RAW chunk ended "
+                            + mLeft + " bytes early");
+                }
                 break;
             case SparseChunk.DONTCARE:
                 ret = 0;
                 break;
             case SparseChunk.FILL:
-                ret = Byte.toUnsignedInt(mCur.fill[(4 - ((int) mLeft & 0x3)) & 0x3]);
+                ret = Byte.toUnsignedInt(fillByte());
                 break;
             default:
                 throw new IOException("Unsupported Chunk:" + mCur.toString());

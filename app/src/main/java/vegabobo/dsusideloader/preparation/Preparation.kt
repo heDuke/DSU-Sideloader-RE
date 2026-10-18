@@ -1,7 +1,8 @@
 package vegabobo.dsusideloader.preparation
 
 import android.net.Uri
-import java.math.BigInteger
+import android.util.Log
+import java.io.IOException
 import kotlinx.coroutines.Job
 import vegabobo.dsusideloader.core.StorageManager
 import vegabobo.dsusideloader.model.DSUConstants
@@ -12,6 +13,8 @@ class Preparation(
     private val storageManager: StorageManager,
     private val session: Session,
     private val job: Job,
+    /** Workspace directory owned by this task (see TaskWorkspaces); nothing else is written. */
+    private val taskKey: String,
     private val onStepUpdate: (step: InstallationStep) -> Unit,
     private val onPreparationProgressUpdate: (progress: Float) -> Unit,
     private val onCanceled: () -> Unit,
@@ -22,6 +25,12 @@ class Preparation(
     private val userSelectedFileUri = session.userSelection.selectedFileUri
 
     override fun invoke() {
+        // Only the current task can be preparing (task gate), so leftovers of earlier tasks
+        // and of the old flat layout can be removed (best effort).
+        val stale = runCatching { storageManager.removeStaleWorkspaces(taskKey) }
+        if (stale.getOrNull()?.isNotEmpty() != false) {
+            Log.w("Preparation", "Could not remove stale workspace entries: ${stale.getOrNull() ?: stale.exceptionOrNull()}")
+        }
         if (session.preferences.useBuiltinInstaller && session.isRoot()) {
             prepareRooted()
             return
@@ -59,7 +68,7 @@ class Preparation(
     }
 
     private fun prepareForDSU() {
-        storageManager.cleanWorkspaceFolder(true)
+        storageManager.cleanTaskWorkspace(taskKey, true)
         val fileExtension = getExtension(userSelectedFileUri)
         val preparedFilePair =
             when (fileExtension) {
@@ -81,7 +90,10 @@ class Preparation(
 
         onStepUpdate(InstallationStep.WAITING_USER_CONFIRMATION)
 
-        storageManager.cleanWorkspaceFolder(job.isCancelled)
+        // Intermediate files only (the prepared .gz is kept for the DSU app); a failed delete is
+        // not fatal here, the cancel/failure path and the next task clean again.
+        runCatching { storageManager.cleanTaskWorkspace(taskKey, job.isCancelled) }
+            .onFailure { Log.w("Preparation", "Workspace cleanup failed", it) }
 
         if (!job.isCancelled) {
             onPreparationFinished(source)
@@ -102,6 +114,7 @@ class Preparation(
             storageManager,
             xzFile,
             outputFile,
+            taskKey,
             job,
             onPreparationProgressUpdate,
         ).unpack()
@@ -115,6 +128,7 @@ class Preparation(
             storageManager,
             imageFile,
             outputFile,
+            taskKey,
             job,
             onPreparationProgressUpdate,
         ).pack()
@@ -124,36 +138,28 @@ class Preparation(
     private fun prepareGz(gzFile: Uri): Pair<Uri, Long> {
         val uri = getSafeUri(gzFile)
         if (userSelectedImageSize != DSUConstants.DEFAULT_IMAGE_SIZE) {
+            // Advanced override: skips the full scan, so the archive is NOT validated here
+            // (a wrong size or corrupt archive only fails later, in the system installer).
+            Log.w("Preparation", "Using manual image size $userSelectedImageSize without gzip verification")
             return Pair(uri, userSelectedImageSize)
         }
 
-        onStepUpdate(InstallationStep.PROCESSING)
-        val fileSize = storageManager.getFilesizeFromUri(uri)
-        val three_gb = Int.MAX_VALUE.toLong() * 1.5 // 2^32 * 0.75
-
-        // If the .gz is smaller than 3gb, then try returning the image size
-        // by reading the lasts four bytes.
-        if (fileSize < three_gb) {
-            val inputStream = storageManager.openInputStream(uri)
-            inputStream.skip(fileSize - 4)
-            val bytes = ByteArray(4)
-            inputStream.read(bytes)
-            bytes.reverse() // Little endian -> Big endian
-            val imageSize = BigInteger(1, bytes).toLong()
-            // If the image size is LOWER than the compressed file, then
-            // the image size must be wrong.
-            if (imageSize > fileSize) {
-                return Pair(uri, imageSize)
+        // The gzip ISIZE trailer is the size modulo 2^32 (and only of the last member),
+        // so it is ambiguous for images >= 4 GiB. Decompress (without writing to disk)
+        // and count the exact size; this also rejects truncated/corrupt archives.
+        onStepUpdate(InstallationStep.VERIFYING_IMAGE_SIZE)
+        val compressedSize = storageManager.getFilesizeFromUri(uri)
+        val imageSize = storageManager.openInputStream(uri).use { input ->
+            GzipImageSize.countUncompressedBytes(input, { job.isCancelled }) { read ->
+                if (compressedSize > 0) {
+                    onPreparationProgressUpdate((read.toFloat() / compressedSize).coerceIn(0F, 1F))
+                }
             }
         }
-        // If the .gz is bigger than 3gb or the fast-way returns a
-        // wrong value, we need to decompress the file and calculate
-        // the size. SLOWWWWWWWWWWWWWW
-        val outputFile = getFileName(uri)
-        onStepUpdate(InstallationStep.DECOMPRESSING_GZIP)
-        val extractedFilePair =
-            FileUnPacker(storageManager, uri, outputFile, job, onPreparationProgressUpdate).unpack()
-        return Pair(uri, extractedFilePair.second)
+        if (imageSize <= 0) {
+            throw IOException("Decompressed image is empty")
+        }
+        return Pair(uri, imageSize)
     }
 
     private fun extractFile(uri: Uri): Pair<Uri, Long> {
@@ -166,6 +172,7 @@ class Preparation(
             storageManager,
             uri,
             "$partitionName.img",
+            taskKey,
             job,
             onPreparationProgressUpdate,
         ).unpack()
@@ -173,7 +180,7 @@ class Preparation(
 
     private fun getSafeUri(uri: Uri): Uri {
         onStepUpdate(InstallationStep.COPYING_FILE)
-        return storageManager.getUriSafe(uri)
+        return storageManager.getUriSafe(uri, taskKey)
     }
 
     private fun getFileName(uri: Uri): String {

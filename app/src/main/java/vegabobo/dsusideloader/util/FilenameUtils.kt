@@ -48,12 +48,15 @@ class FilenameUtils {
         }
 
         fun queryName(resolver: ContentResolver, uri: Uri): String {
-            val returnCursor: Cursor = resolver.query(uri, null, null, null, null)!!
-            val nameIndex: Int = returnCursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            returnCursor.moveToFirst()
-            val name: String = returnCursor.getString(nameIndex)
-            returnCursor.close()
-            return name
+            val returnCursor: Cursor = resolver.query(uri, null, null, null, null)
+                ?: throw IllegalStateException("Unable to query $uri")
+            returnCursor.use { cursor ->
+                val nameIndex: Int = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex < 0 || !cursor.moveToFirst()) {
+                    throw IllegalStateException("No display name for $uri")
+                }
+                return cursor.getString(nameIndex)
+            }
         }
 
         fun getDigits(input: String): String {

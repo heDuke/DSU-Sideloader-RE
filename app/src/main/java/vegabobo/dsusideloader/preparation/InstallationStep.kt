@@ -13,7 +13,7 @@ enum class InstallationStep {
     COPYING_FILE,
     DECOMPRESSING_XZ,
     COMPRESSING_TO_GZ,
-    DECOMPRESSING_GZIP,
+    VERIFYING_IMAGE_SIZE,
     EXTRACTING_FILE,
 
     // Installation Steps
@@ -25,8 +25,15 @@ enum class InstallationStep {
     INSTALLING_ROOTED,
     CREATING_PARTITION,
 
+    // Cancel requested; waiting for the task to stop and clean up (abort/remove)
+    CANCELLING,
+
     // Errors
     ERROR,
+
+    // Cleanup after a failure/cancel did not complete or the system state is unknown
+    ERROR_CLEANUP_INCOMPLETE,
+    CANCEL_REQUESTED_CLEANUP_UNVERIFIED,
     ERROR_CANCELED,
     ERROR_REQUIRES_DISCARD_DSU,
     ERROR_ALREADY_RUNNING_DYN_OS,
@@ -38,7 +45,12 @@ enum class InstallationStep {
     ERROR_SELINUX,
     ERROR_SELINUX_ROOTLESS,
 
-    // Once installation is finished
+    // Request handed to the DSU system app, but the result can't be observed
+    // (no READ_LOGS permission). Not a success state.
+    INSTALL_SUBMITTED_UNCONFIRMED,
+    STORAGE_RESTORE_PENDING,
+
+    // Once installation is finished (confirmed)
     INSTALL_SUCCESS,
     INSTALL_SUCCESS_REBOOT_DYN_OS,
 }

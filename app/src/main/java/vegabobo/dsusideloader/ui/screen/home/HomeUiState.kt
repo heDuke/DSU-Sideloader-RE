@@ -12,6 +12,13 @@ data class InstallationCardState(
     val isProgressBarIndeterminate: Boolean = false,
     val installationProgress: Float = 0F,
     val currentPartitionText: String = "",
+    /** SD volumes unmounted for a DSU installation are still waiting to be restored. */
+    val storageRestorePending: Boolean = false,
+    /** gsid reported an installation still running when the user asked to restore. */
+    val storageRestoreBlocked: Boolean = false,
+    val storageRestoreError: String = "",
+    /** Images of the package that were not installed (boot, vbmeta, ...), for the summary. */
+    val skippedImages: List<String> = emptyList(),
 )
 
 data class UserDataCardState(
@@ -25,6 +32,14 @@ data class ImageSizeCardState(
     val isSelected: Boolean = false,
     val text: String = "",
 )
+
+/** Actions of installation card states that need explicit user decisions. */
+enum class InstallationCardAction {
+    ACK_CLEANUP_INCOMPLETE,
+    ACK_UNCONFIRMED,
+    RESTORE_STORAGE,
+    RESTORE_STORAGE_LATER,
+}
 
 enum class AdditionalCardState {
     NONE,

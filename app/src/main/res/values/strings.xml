@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name" translatable="false">DSU Sideloader</string>
 
     <!--
@@ -241,4 +241,21 @@
 
     <string name="close_app">Close app</string>
     <string name="close_app_question">Close app?</string>
+
+    <!-- P0 strings added in PR #2. Only en + zh-CN are provided so far; other locales
+         intentionally fall back to English until translators update them, hence the
+         per-string MissingTranslation suppression (lint stays enabled for all other strings). -->
+    <string name="installation_submitted_unconfirmed" tools:ignore="MissingTranslation">The request was handed to the system but the installation is not confirmed yet. Confirm it on the system DSU screen and check the progress in the notification.</string>
+    <string name="cancelling_installation" tools:ignore="MissingTranslation">Cancelling and cleaning up…</string>
+    <string name="cleanup_incomplete" tools:ignore="MissingTranslation">Cleanup not completed / system state unknown.\n%1$s\n\nNext: check the DSU notification and the installed DSU status; discard any leftover DSU before installing again (restart the device if it cannot be discarded).</string>
+    <string name="installation_submitted_unconfirmed_details" tools:ignore="MissingTranslation">Details: without the READ_LOGS permission this app cannot read the system DSU progress.</string>
+    <string name="done_in_system_dsu" tools:ignore="MissingTranslation">Finished or cancelled in system</string>
+    <string name="restore_storage" tools:ignore="MissingTranslation">Restore storage</string>
+    <string name="later" tools:ignore="MissingTranslation">Later</string>
+    <string name="storage_restore_prompt" tools:ignore="MissingTranslation">The SD card was unmounted for a DSU installation and has not been restored, because the result of that installation is unknown. Finish or cancel the installation in the system DSU page (or its notification) first, then tap Restore storage.</string>
+    <string name="storage_restore_blocked" tools:ignore="MissingTranslation">The system still reports a DSU installation in progress. Finish or cancel it first.</string>
+    <string name="storage_restore_failed" tools:ignore="MissingTranslation">Could not restore: %1$s. Try again, or reinsert the card / restart the device.</string>
+    <string name="verifying_image_size" tools:ignore="MissingTranslation">Verifying the image and calculating its size…</string>
+    <string name="skipped_images" tools:ignore="MissingTranslation">Not installed (not supported by DSU): %1$s</string>
+    <string name="cancel_cleanup_unverified" tools:ignore="MissingTranslation">Cancellation requested; the cleanup result can\'t be confirmed.\n%1$s\n\nNext: check the DSU notification; discard any leftover DSU before installing again (restart the device if it cannot be discarded).</string>
 </resources>

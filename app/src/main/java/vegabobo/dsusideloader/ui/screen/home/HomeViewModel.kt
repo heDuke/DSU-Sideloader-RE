@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -11,8 +12,9 @@ import androidx.lifecycle.viewModelScope
 import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,12 +22,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import vegabobo.dsusideloader.BuildConfig
+import vegabobo.dsusideloader.IPrivilegedService
 import vegabobo.dsusideloader.core.BaseViewModel
 import vegabobo.dsusideloader.core.StorageManager
+import vegabobo.dsusideloader.core.TaskWorkspaces
 import vegabobo.dsusideloader.installer.adb.AdbInstallationHandler
+import vegabobo.dsusideloader.installer.privileged.DataStorePendingRemountStore
 import vegabobo.dsusideloader.installer.privileged.DsuInstallationHandler
+import vegabobo.dsusideloader.installer.privileged.DsuSubmission
+import vegabobo.dsusideloader.installer.privileged.DsuSubmissionStep
 import vegabobo.dsusideloader.installer.privileged.LogcatDiagnostic
+import vegabobo.dsusideloader.installer.privileged.SdCardRemounter
+import vegabobo.dsusideloader.installer.privileged.SystemDsuState
+import vegabobo.dsusideloader.installer.privileged.asVolumeOps
+import vegabobo.dsusideloader.installer.root.CleanupResult
 import vegabobo.dsusideloader.installer.root.DSUInstaller
+import vegabobo.dsusideloader.installer.root.DsuInstallResult
+import vegabobo.dsusideloader.installer.task.InstallOutcome
+import vegabobo.dsusideloader.installer.task.InstallTaskGate
+import vegabobo.dsusideloader.installer.task.TaskSteps
 import vegabobo.dsusideloader.model.DSUInstallationSource
 import vegabobo.dsusideloader.model.Session
 import vegabobo.dsusideloader.preferences.AppPrefs
@@ -56,8 +71,15 @@ class HomeViewModel @Inject constructor(
     var checkReadLogsPermission = true
     var disabledStorageCheck = false
 
-    var installationJob: Job = Job()
+    // No shared "current installation Job": every task owns its Job (taskGate.jobOf(id)), so
+    // code of an old task can never run on, or cancel, the Job of a newer task.
     var logger: LogcatDiagnostic? = null
+    private val sdCardRemounter =
+        SdCardRemounter(DataStorePendingRemountStore(dataStore), log = { Log.d("SdCardRemounter", it) })
+
+    /** Task that unmounted SD volumes; only its confirmed terminal outcome may remount them. */
+    @Volatile
+    private var taskThatUnmounted: Long? = null
 
     private val allocPercentage = DevicePropUtils.getGsidBinaryAllowedPerc()
     val allocPercentageInt = String.format("%.0f", allocPercentage * 100).toInt()
@@ -85,13 +107,106 @@ class HomeViewModel @Inject constructor(
     private fun updateSheetState(sheetDisplay: SheetDisplayState) =
         _uiState.update { it.copy(sheetDisplay = sheetDisplay) }
 
-    fun resetInstallationCard() =
+    fun resetInstallationCard() {
         _uiState.update {
             it.copy(
                 installationCard = InstallationCardState(),
                 sheetDisplay = SheetDisplayState.NONE,
             )
         }
+        // Leaving a card is NOT a terminal outcome: never remount here (review R3).
+        refreshStorageRestorePending()
+    }
+
+    /** Remount only for the confirmed terminal outcome of the task that unmounted. */
+    private fun remountSdCardsIfOwnedBy(id: Long, reason: String) {
+        if (taskThatUnmounted != id) return
+        taskThatUnmounted = null
+        viewModelScope.launch(Dispatchers.IO) {
+            sdCardRemounter.remountPendingIfAny(reason)
+            refreshStorageRestorePending()
+        }
+    }
+
+    private fun currentBootId(): String? =
+        runCatching { Settings.Global.getString(application.contentResolver, Settings.Global.BOOT_COUNT) }
+            .getOrNull()
+
+    private fun querySystemDsuState(service: IPrivilegedService): SystemDsuState {
+        // getInstallationProgress needs MANAGE_DYNAMIC_SYSTEM: only meaningful as root.
+        if (!session.isRoot()) return SystemDsuState.UNKNOWN
+        return runCatching {
+            if (service.installationProgress.status == 1) SystemDsuState.INSTALLING else SystemDsuState.IDLE
+        }.getOrDefault(SystemDsuState.UNKNOWN)
+    }
+
+    private fun refreshStorageRestorePending() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pending = sdCardRemounter.hasPending()
+            showStorageRestore(pending, promptIfIdle = pending && !taskGate.isBusy())
+        }
+    }
+
+    private fun showStorageRestore(pending: Boolean, promptIfIdle: Boolean, blocked: Boolean = false, error: String = "") {
+        updateInstallationCard {
+            val step = when {
+                !pending && it.installationStep == InstallationStep.STORAGE_RESTORE_PENDING ->
+                    InstallationStep.NOT_INSTALLING
+                promptIfIdle && it.installationStep == InstallationStep.NOT_INSTALLING ->
+                    InstallationStep.STORAGE_RESTORE_PENDING
+                else -> it.installationStep
+            }
+            it.copy(
+                installationStep = step,
+                storageRestorePending = pending,
+                storageRestoreBlocked = pending && blocked,
+                storageRestoreError = if (pending) error else "",
+            )
+        }
+    }
+
+    /**
+     * App start: volumes left unmounted by a previous process. Auto-remount only when the
+     * policy proves no installation can still depend on it; otherwise ask the user.
+     */
+    private fun checkPendingStorageOnAppStart() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!sdCardRemounter.hasPending()) return@launch
+            val bootId = currentBootId()
+            PrivilegedProvider.run(
+                onFail = {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        sdCardRemounter.onAppStart(null, bootId, SystemDsuState.UNKNOWN)
+                        refreshStorageRestorePending()
+                    }
+                },
+            ) {
+                sdCardRemounter.onAppStart(asVolumeOps(), bootId, querySystemDsuState(this))
+                refreshStorageRestorePending()
+            }
+        }
+    }
+
+    /** Explicit "restore storage": refuse while gsid reports an installation in progress. */
+    private fun onRestoreStorage() {
+        PrivilegedProvider.run(
+            onFail = { showStorageRestore(true, promptIfIdle = false, error = "privileged service unavailable") },
+        ) {
+            if (querySystemDsuState(this) == SystemDsuState.INSTALLING) {
+                showStorageRestore(true, promptIfIdle = false, blocked = true)
+                return@run
+            }
+            val failed = sdCardRemounter.remountPending(asVolumeOps(), "user restore")
+            if (failed.isNotEmpty()) {
+                val reasons = sdCardRemounter.failureReasons()
+                val text = failed.joinToString("; ") { v -> reasons[v]?.let { r -> "$v: $r" } ?: v }
+                showStorageRestore(true, promptIfIdle = false, error = text)
+                return@run
+            }
+            taskThatUnmounted = null
+            showStorageRestore(false, promptIfIdle = false)
+        }
+    }
 
     fun dismissSheet() = updateSheetState(SheetDisplayState.NONE)
 
@@ -100,6 +215,9 @@ class HomeViewModel @Inject constructor(
     //
 
     init {
+        // Volumes left unmounted by a previous process (e.g. killed mid-installation).
+        checkPendingStorageOnAppStart()
+
         // Check if a DSU is already installed
         // Root-only because MANAGE_DYNAMIC_SYSTEM is required
         if (session.isRoot()) {
@@ -187,11 +305,22 @@ class HomeViewModel @Inject constructor(
     //
     // Installation
     //
+    // Every installation runs as a task of [taskGate]: one task at a time, identified by an
+    // id. Callbacks carry the id; updates from a task that is no longer current (or that is
+    // being cancelled) are dropped, so a stale task can't overwrite a newer task's state.
+    // The task is released only when its terminal result (including cleanup) is known.
+    //
+
+    private val taskGate = InstallTaskGate()
+
+    /** The DSU app submission step of the current task, if any. */
+    @Volatile
+    private var dsuSubmission: DsuSubmissionStep? = null
 
     fun obtainSelectedFilename(): String = session.userSelection.selectedFileName
 
     fun onClickCancel() {
-        if (uiState.value.isInstalling()) {
+        if (uiState.value.isInstalling() && taskGate.current()?.cancelling == false) {
             updateSheetState(SheetDisplayState.CANCEL_INSTALLATION)
         }
     }
@@ -202,95 +331,288 @@ class HomeViewModel @Inject constructor(
         updateSheetState(SheetDisplayState.CONFIRM_INSTALLATION)
     }
 
+    /** Starts a new task, or returns null if one is still running/cleaning up. */
+    private fun beginTask(): Long? {
+        // Each task gets its own workspace directory (TaskWorkspaces), so the cleanup of one
+        // task can never delete files of another.
+        val id = taskGate.begin { TaskWorkspaces.taskKey(it, System.currentTimeMillis()) }
+        if (id == null) {
+            Log.w(tag, "Installation task still running or cleaning up: ${taskGate.current()}")
+            return null
+        }
+        updateInstallationCard { it.copy(skippedImages = emptyList()) }
+        return id
+    }
+
+    /** Runs [block] only if task [id] is current and not cancelling. */
+    private inline fun ifAccepts(id: Long, block: () -> Unit) {
+        if (taskGate.acceptsUpdates(id)) block() else Log.d(tag, "Dropping update of stale task $id")
+    }
+
     fun onConfirmInstallationSheet() {
         dismissSheet()
+        val id = beginTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        installationJob = Job()
-        viewModelScope.launch(Dispatchers.IO + installationJob) {
+        val job = taskGate.jobOf(id) ?: return
+        val taskKey = taskGate.workspaceOf(id) ?: return
+        // The whole entry (preference reads included) is one task step: if it is cancelled
+        // before it starts, while suspended in a preference read, or fails anywhere, the
+        // completion fallback produces exactly one terminal outcome and releases the task.
+        TaskSteps.launch(
+            scope = viewModelScope,
+            context = Dispatchers.IO + job,
+            onUnsettled = { cause -> onPreparationStepUnsettled(id, cause) },
+            onErrorAfterSettle = { e ->
+                Log.e(tag, "Starting the installation failed", e)
+                if (taskGate.isOwnedByPreparation(id)) {
+                    // Settled, but no backend took the task over (e.g. the ADB script could not
+                    // be written, or a parameter read failed before DSU_APP): this step still
+                    // owns the terminal outcome, also when a cancel arrived meanwhile.
+                    onPreparationStepUnsettled(id, e, inStep = true)
+                } else {
+                    // ROOT_INSTALL / DSU_APP: a cancel is reported by that backend's path.
+                    onTaskFailed(id, InstallationStep.ERROR, e.message ?: e.toString())
+                }
+            },
+        ) { step ->
             session.preferences.isUnmountSdCard = readBoolPref(AppPrefs.UMOUNT_SD)
             session.preferences.useBuiltinInstaller = readBoolPref(AppPrefs.USE_BUILTIN_INSTALLER)
             Preparation(
                 storageManager = storageManager,
                 session = session,
-                job = installationJob,
-                onStepUpdate = this@HomeViewModel::onStepUpdate,
-                onPreparationProgressUpdate = this@HomeViewModel::onPreparationProgressUpdate,
-                onCanceled = this@HomeViewModel::onClickCancelInstallationButton,
-                onPreparationFinished = this@HomeViewModel::onPreparationFinished,
+                job = job,
+                taskKey = taskKey,
+                onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
+                onPreparationProgressUpdate = { p -> ifAccepts(id) { onPreparationProgressUpdate(p) } },
+                onCanceled = {
+                    if (step.settle()) onPreparationStepUnsettled(id, CancellationException("preparation cancelled"), inStep = true)
+                },
+                onPreparationFinished = { if (step.settle()) onPreparationFinished(id, it) },
             ).invoke()
         }
     }
 
-    private fun onPreparationFinished(dsuInstallation: DSUInstallationSource) {
-        Log.d(tag, "DSU preparation finished, result: $dsuInstallation")
-        session.dsuInstallation = dsuInstallation
-        startInstallation()
+    /**
+     * Terminal outcome of a preparation step that did not hand the task over.
+     *
+     * The task's own workspace directory is cleaned first and the task is released only after
+     * the cleanup finished, so a next task can't start while it runs; a cleanup failure is part
+     * of the reported result. [inStep]: called from inside the task's preparation step (an
+     * IO thread), so the outcome is produced there and the step's Job completes only after the
+     * task was released. Otherwise (completion fallback, which may run in the cancelling main
+     * thread, or other callers) it runs on IO.
+     *
+     * Idempotent: only the first call for a task produces the outcome (claimTerminal), and
+     * the task is released in a finally block, so an exception while cleaning or reporting
+     * can't leave the task lock held.
+     */
+    private fun onPreparationStepUnsettled(id: Long, cause: Throwable?, inStep: Boolean = false) {
+        val taskKey = taskGate.workspaceOf(id) ?: return
+        if (!taskGate.claimTerminal(id)) return
+        fun report() {
+            try {
+                val cleanupError = runCatching { storageManager.cleanTaskWorkspace(taskKey, true) }.exceptionOrNull()
+                if (cleanupError != null) Log.w(tag, "Workspace cleanup of task $id failed", cleanupError)
+                val cleanupNote = cleanupError?.let { "Temporary files could not be removed: ${it.message ?: it}" }
+                if (cause is CancellationException || taskGate.isCancelling(id)) {
+                    // An error that happened after the cancel request is kept as detail.
+                    val lateError = cause?.takeIf { it !is CancellationException }
+                        ?.let { "Error while cancelling: ${it.message ?: it}" }
+                    finishCancelWithOutcome(
+                        id,
+                        InstallOutcome(InstallationStep.ERROR_CANCELED, listOfNotNull(lateError, cleanupNote).joinToString("\n")),
+                    )
+                    return
+                }
+                // Unsupported/corrupt/truncated input, I/O, preference or storage errors. Finished
+                // directly (not via onTaskFailed): a cancel that arrives now must not leave the
+                // task unfinished, nobody else would report it.
+                Log.e(tag, "Preparation failed", cause)
+                val message = cause?.message ?: cause?.toString() ?: "Preparation ended without a result"
+                if (!taskGate.finish(id)) return
+                remountSdCardsIfOwnedBy(id, "preparation error")
+                onInstallationError(InstallationStep.ERROR, listOfNotNull(message, cleanupNote).joinToString("\n"))
+            } finally {
+                // Last resort (reporting itself threw): never keep the task locked.
+                if (taskGate.finish(id)) {
+                    Log.e(tag, "Task $id ended without a reported outcome")
+                    updateInstallationCard {
+                        it.copy(installationStep = InstallationStep.ERROR, errorText = "Installation ended unexpectedly")
+                    }
+                }
+            }
+        }
+        if (inStep) report() else viewModelScope.launch(Dispatchers.IO) { report() }
     }
 
-    private fun startInstallation() {
-        Log.d(tag, "startInstallation(), session: \n$session")
-        updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
+    private fun onPreparationFinished(id: Long, dsuInstallation: DSUInstallationSource) {
+        Log.d(tag, "DSU preparation finished, result: $dsuInstallation")
+        if (taskGate.isCancelling(id)) {
+            // Only called from the preparation step (see onConfirmInstallationSheet).
+            onPreparationStepUnsettled(id, CancellationException("cancelled after preparation"), inStep = true)
+            return
+        }
+        if (!taskGate.isCurrent(id)) return
+        session.dsuInstallation = dsuInstallation
+        startInstallation(id, inStep = true)
+    }
+
+    /** [inStep]: called from the task's preparation step (see onPreparationStepUnsettled). */
+    private fun startInstallation(id: Long, inStep: Boolean = false) {
+        Log.d(tag, "startInstallation(task $id), session: \n$session")
+        ifAccepts(id) { updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) } }
 
         if (session.getOperationMode() == OperationMode.ADB) {
-            setupAdbInstallation()
+            setupAdbInstallation(id, inStep)
             return
         }
 
         if (session.preferences.useBuiltinInstaller && session.isRoot()) {
-            startDSUInstallation()
+            startDSUInstallation(id)
             return
         }
 
-        startPrivilegedInstallation()
+        startPrivilegedInstallation(id)
     }
 
-    private fun setupAdbInstallation() {
+    private fun setupAdbInstallation(id: Long, inStep: Boolean = false) {
+        // Runs synchronously in the preparation step while still PREPARING: a write failure
+        // (also after a cancel) is reported by that step's onErrorAfterSettle.
         AdbInstallationHandler(storageManager, session).generate { scriptPath ->
             Log.d(tag, "Installation script generated: $scriptPath")
-            session.installationScriptPath = scriptPath
-            resetInstallationCard()
-            updateInstallationCard { it.copy(installationStep = InstallationStep.REQUIRES_ADB_CMD_TO_CONTINUE) }
+            // From the app's point of view the task ends here: the user runs the script.
+            // A cancel requested while the script was being written wins.
+            if (taskGate.finishIfNotCancelling(id)) {
+                session.installationScriptPath = scriptPath
+                resetInstallationCard()
+                updateInstallationCard { it.copy(installationStep = InstallationStep.REQUIRES_ADB_CMD_TO_CONTINUE) }
+            } else if (taskGate.isCancelling(id)) {
+                onPreparationStepUnsettled(id, CancellationException("cancelled while generating the ADB script"), inStep)
+            }
         }
     }
 
-    private fun startDSUInstallation() {
-        DSUInstaller(
-            application = application,
-            userdataSize = session.userSelection.userSelectedUserdata,
-            dsuInstallation = session.dsuInstallation,
-            installationJob = installationJob,
-            onInstallationError = this::onInstallationError,
-            onInstallationProgressUpdate = this::onInstallationProgressUpdate,
-            onCreatePartition = this::onCreatePartition,
-            onInstallationStepUpdate = this::onStepUpdate,
-            onInstallationSuccess = this::onRootInstallationSuccess,
-        ).invoke()
+    private fun startDSUInstallation(id: Long) {
+        // The task's own Job (once ROOT_INSTALL, a cancel is reported by the pipeline itself).
+        val job = taskGate.jobOf(id)
+        if (job == null || !taskGate.setPhase(id, InstallTaskGate.Phase.ROOT_INSTALL)) {
+            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before install"))
+            return
+        }
+        // Never run the (blocking) installation on the main thread. Not bound to the job:
+        // the pipeline polls job.isCancelled and must always run its cleanup and report.
+        viewModelScope.launch(Dispatchers.IO) {
+            DSUInstaller(
+                application = application,
+                userdataSize = session.userSelection.userSelectedUserdata,
+                dsuInstallation = session.dsuInstallation,
+                installationJob = job,
+                onInstallationProgressUpdate = { p, part -> ifAccepts(id) { onInstallationProgressUpdate(p, part) } },
+                onCreatePartition = { part -> ifAccepts(id) { onCreatePartition(part) } },
+                onInstallationStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
+                onFinished = { result -> onRootInstallationFinished(id, result) },
+                onImageSkipped = { image ->
+                    ifAccepts(id) { updateInstallationCard { it.copy(skippedImages = it.skippedImages + image) } }
+                },
+            ).invoke()
+        }
     }
 
-    private fun startPrivilegedInstallation() {
-        updateInstallationCard { it.copy(installationStep = InstallationStep.WAITING_USER_CONFIRMATION) }
-        DsuInstallationHandler(session).startInstallation()
-        if (session.isRoot() || OperationModeUtils.isReadLogsPermissionGranted(application)) {
-            startLogging()
-        } else {
-            updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS) }
+    private fun onRootInstallationFinished(id: Long, result: DsuInstallResult) {
+        val outcome = InstallOutcome.from(result)
+        Log.d(tag, "Task $id finished: $result -> $outcome")
+        if (!taskGate.finish(id)) {
+            Log.w(tag, "Ignoring result of stale task $id")
+            return
+        }
+        updateInstallationCard {
+            it.copy(installationStep = outcome.step, errorText = outcome.detail)
+        }
+    }
+
+    private fun startPrivilegedInstallation(id: Long) {
+        // The task's own Job: never a shared field a newer task may have replaced meanwhile.
+        val job = taskGate.jobOf(id)
+        if (job == null || !taskGate.acceptsUpdates(id)) {
+            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
+            return
+        }
+        val canTrackResult =
+            session.isRoot() || OperationModeUtils.isReadLogsPermissionGranted(application)
+        val unmountSdCard = session.preferences.isUnmountSdCard
+        // Parameters are captured now (still in phase PREPARING: a cancel here is reported
+        // below, when the phase switch is refused). The submission runs as a child of the
+        // task's Job and re-checks the task's identity/cancel state before startActivity.
+        val submission = DsuInstallationHandler(
+            session = session,
+            sdCardRemounter = sdCardRemounter,
+            bootId = currentBootId(),
+            isOwner = { taskGate.acceptsUpdates(id) },
+        ).submission
+        val stepJob = TaskSteps.launch(
+            scope = viewModelScope,
+            context = Dispatchers.IO + job,
+            start = CoroutineStart.LAZY,
+            onUnsettled = { cause -> onSubmissionStepUnsettled(id, cause, submission) },
+        ) { step ->
+            when (val result = submission.submit()) {
+                DsuSubmission.Result.Submitted -> {
+                    step.settle()
+                    if (!canTrackResult) {
+                        // Without READ_LOGS we cannot observe the DSU app: the request was submitted,
+                        // but success can't be confirmed, so never report INSTALL_SUCCESS here.
+                        ifAccepts(id) {
+                            updateInstallationCard {
+                                it.copy(installationStep = InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED)
+                            }
+                        }
+                    }
+                }
+                is DsuSubmission.Result.Failed ->
+                    if (step.settle()) onTaskFailed(id, InstallationStep.ERROR, result.message)
+                // Left unsettled: the completion fallback / cancel path decides.
+                DsuSubmission.Result.Cancelled -> Unit
+            }
+        }
+        val dsuStep = DsuSubmissionStep(id, submission, stepJob)
+        // Phase switch and step registration are one atomic gate operation: a concurrent
+        // cancel either comes first (switch refused, the lazy step never runs and the task is
+        // reported here) or sees DSU_APP together with this step and waits for it.
+        val registered = taskGate.setPhase(id, InstallTaskGate.Phase.DSU_APP) {
+            dsuSubmission = dsuStep
+            if (unmountSdCard) taskThatUnmounted = id
+        }
+        if (!registered) {
+            stepJob.cancel()
+            if (taskGate.isCancelling(id)) onPreparationStepUnsettled(id, CancellationException("cancelled before submission"))
+            return
+        }
+        ifAccepts(id) {
+            updateInstallationCard { it.copy(installationStep = InstallationStep.WAITING_USER_CONFIRMATION) }
+        }
+        stepJob.start()
+        if (canTrackResult) {
+            startLogging(id)
         }
     }
 
     // Track and diagnose installation by reading logcat
-    private fun startLogging() {
-        if (logger == null) {
-            logger = LogcatDiagnostic(
-                onInstallationError = this::onInstallationError,
-                onStepUpdate = this::onStepUpdate,
-                onInstallationProgressUpdate = this::onInstallationProgressUpdate,
-                onInstallationSuccess = this::onInstallationSuccess,
-                onLogLineReceived = this::onLogLineReceived,
-            )
-        }
-        viewModelScope.launch(Dispatchers.IO + installationJob) {
-            logger!!.shouldLogEverything = readBoolPref(AppPrefs.FULL_LOGCAT_LOGGING)
-            logger!!.startLogging(generateUsefulLogInfo())
+    private fun startLogging(id: Long) {
+        // Only for the current, non-cancelled task, on that task's own Job.
+        val job = taskGate.jobOf(id)
+        if (job == null || !taskGate.acceptsUpdates(id)) return
+        logger?.destroy()
+        val newLogger = LogcatDiagnostic(
+            onInstallationError = { step, text -> onTaskFailed(id, step, text) },
+            onStepUpdate = { step -> ifAccepts(id) { onStepUpdate(step) } },
+            onInstallationProgressUpdate = { p, part -> ifAccepts(id) { onInstallationProgressUpdate(p, part) } },
+            onInstallationSuccess = { onTaskConfirmedSuccess(id) },
+            onLogLineReceived = { if (taskGate.isCurrent(id)) onLogLineReceived() },
+        )
+        logger = newLogger
+        viewModelScope.launch(Dispatchers.IO + job) {
+            newLogger.shouldLogEverything = readBoolPref(AppPrefs.FULL_LOGCAT_LOGGING)
+            newLogger.startLogging(generateUsefulLogInfo())
         }
     }
 
@@ -313,21 +635,113 @@ class HomeViewModel @Inject constructor(
         storageManager.writeStringToUri(uiState.value.installationLogs, uriToSaveLogs)
     }
 
+    /**
+     * Cancel: the card switches to CANCELLING and the task stays locked until the
+     * cancellation/cleanup result is known; only then a terminal state is shown.
+     */
     fun onClickCancelInstallationButton() {
-        resetInstallationCard()
-        if (session.getOperationMode() != OperationMode.ADB &&
-            logger != null && logger!!.isLogging.get()
-        ) {
-            logger!!.destroy()
-            // Since stopping installation requires MANAGE_DYNAMIC_SYSTEM
-            // then, we stop installation using other way, not so polite, but works :)))
-            PrivilegedProvider.run { forceStopPackage("com.android.dynsystem") }
+        dismissSheet()
+        val task = taskGate.requestCancel()
+        if (task == null) {
+            // No task (e.g. ADB result card) -> nothing to stop. Already cancelling -> wait.
+            if (!taskGate.isBusy()) resetInstallationCard()
+            return
         }
+        updateInstallationCard { it.copy(installationStep = InstallationStep.CANCELLING, errorText = "") }
+        // The Job of the task being cancelled (captured atomically by requestCancel).
+        task.job.cancel()
+        when (task.phase) {
+            // Preparation coroutine / root pipeline report their own cancellation result.
+            InstallTaskGate.Phase.PREPARING, InstallTaskGate.Phase.ROOT_INSTALL -> Unit
+            InstallTaskGate.Phase.DSU_APP -> cancelDsuAppInstallation(task.id)
+        }
+    }
 
-        if (installationJob.isActive) {
-            installationJob.cancel()
+    /** Submission step ended without a result (cancelled, or returned without settling). */
+    private fun onSubmissionStepUnsettled(id: Long, cause: Throwable?, submission: DsuSubmission) {
+        if (taskGate.isCancelling(id)) return // the cancel path waits for this step and decides
+        if (submission.hasReachedSystem) {
+            onTaskFailed(id, InstallationStep.ERROR, cause?.toString() ?: "Submission ended without a result")
+        } else {
+            onTaskCancelledWithoutSystemChanges(id)
         }
+    }
+
+    private fun cancelDsuAppInstallation(id: Long) {
+        logger?.destroy()
+        val step = dsuSubmission?.takeIf { it.taskId == id }
+        viewModelScope.launch(Dispatchers.IO) {
+            // Wait until the request can no longer unmount storage or open the DSU prompt.
+            val reachedSystem = step?.cancelAndJoin() ?: false
+            if (!reachedSystem) {
+                finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, ""))
+                return@launch
+            }
+            val service = PrivilegedProvider.awaitService()
+            if (service == null) {
+                finishCancelWithOutcome(
+                    id,
+                    InstallOutcome(InstallationStep.ERROR_CLEANUP_INCOMPLETE, "privileged service unavailable"),
+                )
+                return@launch
+            }
+            val outcome = with(service) {
+                try {
+                    // Since stopping installation requires MANAGE_DYNAMIC_SYSTEM
+                    // then, we stop installation using other way, not so polite, but works :)))
+                    forceStopPackage("com.android.dynsystem")
+                    if (session.isRoot()) {
+                        // Root can verify and clean up what the killed DSU app left behind.
+                        val aborted = runCatching { abort() }.getOrDefault(false)
+                        val removed = runCatching { remove() }.getOrDefault(false)
+                        val stillInstalled = runCatching { isInstalled }.getOrNull()
+                        InstallOutcome.from(
+                            DsuInstallResult.Cancelled(
+                                CleanupResult(aborted, removed, stillInstalled = stillInstalled),
+                            ),
+                        )
+                    } else {
+                        // Shell can't query DynamicSystem (no MANAGE_DYNAMIC_SYSTEM): state unknown.
+                        InstallOutcome(
+                            InstallationStep.CANCEL_REQUESTED_CLEANUP_UNVERIFIED,
+                            "DSU app stopped; system DSU state can't be verified without root",
+                        )
+                    }
+                } catch (e: Exception) {
+                    InstallOutcome(InstallationStep.ERROR_CLEANUP_INCOMPLETE, e.toString())
+                }
+            }
+            finishCancelWithOutcome(id, outcome)
+        }
+    }
+
+    /** Cancelled before anything was submitted to the system (preparation phase). */
+    private fun onTaskCancelledWithoutSystemChanges(id: Long) {
+        finishCancelWithOutcome(id, InstallOutcome(InstallationStep.ERROR_CANCELED, ""))
+    }
+
+    private fun finishCancelWithOutcome(id: Long, outcome: InstallOutcome) {
+        if (!taskGate.finish(id)) return
         session.dsuInstallation = DSUInstallationSource()
+        if (outcome.step == InstallationStep.ERROR_CANCELED) {
+            remountSdCardsIfOwnedBy(id, "installation cancelled")
+        }
+        updateInstallationCard { it.copy(installationStep = outcome.step, errorText = outcome.detail) }
+    }
+
+    private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String) {
+        if (taskGate.isCancelling(id)) return // the cancel path reports the terminal state
+        if (!taskGate.finish(id)) return
+        remountSdCardsIfOwnedBy(id, "installation error: $error")
+        onInstallationError(error, errorContent)
+    }
+
+    // Only called when logs confirmed the DSU app reported completion.
+    private fun onTaskConfirmedSuccess(id: Long) {
+        if (taskGate.isCancelling(id)) return
+        if (!taskGate.finish(id)) return
+        updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS) }
+        remountSdCardsIfOwnedBy(id, "installation completed")
     }
 
     //
@@ -343,11 +757,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onClickDiscardGsiAndStartInstallation() {
+        val id = beginTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        PrivilegedProvider.run {
+        PrivilegedProvider.run(onFail = { onTaskFailed(id, InstallationStep.ERROR, "Service unavailable") }) {
             remove()
             forceStopPackage("com.android.dynsystem")
-            startDSUInstallation()
+            startDSUInstallation(id)
         }
     }
 
@@ -361,23 +776,70 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Retry within the current task (e.g. re-open the DSU prompt) or as a new task. */
+    private fun currentOrNewTask(): Long? {
+        val task = taskGate.current()
+        if (task != null) return if (task.cancelling) null else task.id
+        return beginTask()
+    }
+
     fun onClickRetryInstallation() {
+        val id = currentOrNewTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        startInstallation()
+        startInstallation(id)
     }
 
     fun onClickUnmountSdCardAndRetry() {
+        val id = currentOrNewTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
         session.preferences.isUnmountSdCard = true
-        startInstallation()
+        startInstallation(id)
     }
 
     fun onClickSetSeLinuxPermissive() {
+        val id = currentOrNewTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             Shell.cmd("setenforce 0").exec()
             delay(5000)
-            startInstallation()
+            startInstallation(id)
+        }
+    }
+
+    fun onInstallationCardAction(action: InstallationCardAction) {
+        when (action) {
+            InstallationCardAction.ACK_CLEANUP_INCOMPLETE -> onAcknowledgeCleanupIncomplete()
+            InstallationCardAction.ACK_UNCONFIRMED -> onAcknowledgeUnconfirmed()
+            InstallationCardAction.RESTORE_STORAGE -> onRestoreStorage()
+            InstallationCardAction.RESTORE_STORAGE_LATER ->
+                updateInstallationCard { it.copy(installationStep = InstallationStep.NOT_INSTALLING) }
+        }
+    }
+
+    /**
+     * The user states the system DSU flow was finished or cancelled; ends our task.
+     * This does not remount: the pending record stays and the restore prompt is shown.
+     */
+    private fun onAcknowledgeUnconfirmed() {
+        taskThatUnmounted = null
+        taskGate.current()?.let { taskGate.finish(it.id) }
+        resetInstallationCard()
+    }
+
+    /**
+     * "Return" on the cleanup-incomplete card: re-check the system instead of assuming idle.
+     * With root, an image left behind is shown as an installed DSU (discard/reboot actions).
+     */
+    private fun onAcknowledgeCleanupIncomplete() {
+        resetInstallationCard()
+        if (!session.isRoot()) return
+        PrivilegedProvider.run {
+            val installed = runCatching { isInstalled }.getOrNull()
+            if (installed != false) {
+                updateInstallationCard {
+                    it.copy(installationStep = InstallationStep.DSU_ALREADY_INSTALLED)
+                }
+            }
         }
     }
 
@@ -519,16 +981,9 @@ class HomeViewModel @Inject constructor(
     // Progress tracking
     //
 
-    private fun onRootInstallationSuccess() {
-        updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS_REBOOT_DYN_OS) }
-    }
-
-    private fun onInstallationSuccess() {
-        updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS) }
-    }
-
     private fun onLogLineReceived() {
-        _uiState.update { it.copy(installationLogs = logger!!.logs) }
+        val logs = logger?.logs ?: return
+        _uiState.update { it.copy(installationLogs = logs) }
     }
 
     private fun onStepUpdate(step: InstallationStep) =
@@ -537,7 +992,7 @@ class HomeViewModel @Inject constructor(
     private fun onPreparationProgressUpdate(progress: Float) =
         updateInstallationCard { it.copy(installationProgress = progress) }
 
-    private fun onInstallationError(error: InstallationStep, errorContent: String) =
+    private fun onInstallationError(error: InstallationStep, errorContent: String) {
         updateInstallationCard {
             if (error == InstallationStep.ERROR_SELINUX && !session.isRoot()) {
                 it.copy(
@@ -548,6 +1003,7 @@ class HomeViewModel @Inject constructor(
                 it.copy(installationStep = error, errorText = errorContent)
             }
         }
+    }
 
     private fun onInstallationProgressUpdate(progress: Float, partition: String) =
         updateInstallationCard {

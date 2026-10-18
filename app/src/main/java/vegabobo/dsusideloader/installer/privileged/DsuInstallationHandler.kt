@@ -1,42 +1,52 @@
 package vegabobo.dsusideloader.installer.privileged
 
 import android.content.Intent
-import android.os.storage.VolumeInfo
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import vegabobo.dsusideloader.IPrivilegedService
 import vegabobo.dsusideloader.model.Session
 import vegabobo.dsusideloader.service.PrivilegedProvider
 
 /**
  * Install images via DSU app
  * Supported modes are: Shizuku (as shell or root), root and system
+ *
+ * Android adapter of [DsuSubmission]: the request parameters are captured when the handler
+ * is created (later changes of the shared session don't affect it), and [submission] must
+ * be run by the caller inside the task's coroutine. [DsuSubmission.Result.Submitted] means
+ * the request was handed to the DSU system app; it does NOT mean the installation succeeded.
  */
-open class DsuInstallationHandler(
-    private val session: Session,
+class DsuInstallationHandler(
+    session: Session,
+    sdCardRemounter: SdCardRemounter,
+    bootId: String? = null,
+    /** Identity/cancel check of the task that owns this request (see [DsuSubmission]). */
+    isOwner: () -> Boolean = { true },
 ) {
 
     private val tag = this.javaClass.simpleName
 
-    fun startInstallation() {
-        if (session.preferences.isUnmountSdCard) {
-            unmountSdTemporary()
+    private val userdataSize = session.userSelection.userSelectedUserdata
+    private val fileUri = session.dsuInstallation.uri
+    private val length = session.dsuInstallation.fileSize
+
+    val submission = DsuSubmission(
+        remounter = sdCardRemounter,
+        unmountSdCard = session.preferences.isUnmountSdCard,
+        bootId = bootId,
+        connect = { PrivilegedProvider.awaitService()?.let { ServiceTarget(it) } },
+        log = { Log.d(tag, it) },
+        isOwner = isOwner,
+    )
+
+    private inner class ServiceTarget(private val service: IPrivilegedService) : DsuSubmitTarget {
+        override val volumeOps: VolumeOps = service.asVolumeOps()
+
+        override fun prepareDsuApp() {
+            service.setDynProp()
+            service.forceStopPackage("com.android.dynsystem")
         }
-        forwardInstallationToDSU()
-    }
 
-    private fun forwardInstallationToDSU() {
-        val userdataSize = session.userSelection.userSelectedUserdata
-        val fileUri = session.dsuInstallation.uri
-        val length = session.dsuInstallation.fileSize
-
-        PrivilegedProvider.run {
-            setDynProp()
-            forceStopPackage("com.android.dynsystem")
-
+        override fun startDsuInstall() {
             val dynIntent = Intent()
             dynIntent.setClassName(
                 "com.android.dynsystem",
@@ -49,28 +59,7 @@ open class DsuInstallationHandler(
             dynIntent.putExtra("KEY_SYSTEM_SIZE", length)
 
             Log.d(tag, "Starting DSU VerificationActivity: $dynIntent")
-            startActivity(dynIntent)
-        }
-    }
-
-    private fun unmountSdTemporary() {
-        val volumes: List<VolumeInfo> =
-            PrivilegedProvider.getService().volumes
-        val volumesUnmount: ArrayList<String> = ArrayList()
-        for (volume in volumes)
-            if (volume.id.contains("public")) {
-                PrivilegedProvider.run { unmount(volume.id) }
-                volumesUnmount.add(volume.id)
-                Log.d(tag, "Volume unmounted: ${volume.id}")
-            }
-        if (volumesUnmount.size > 0) {
-            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                delay(30 * 1000)
-                for (volume in volumesUnmount) {
-                    Log.d(tag, "Volume remounted: $volume")
-                    PrivilegedProvider.run { mount(volume) }
-                }
-            }
+            service.startActivity(dynIntent)
         }
     }
 }

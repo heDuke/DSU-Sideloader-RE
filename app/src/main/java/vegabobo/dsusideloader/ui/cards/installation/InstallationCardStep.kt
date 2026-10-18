@@ -7,6 +7,7 @@ import vegabobo.dsusideloader.R
 import vegabobo.dsusideloader.preparation.InstallationStep
 import vegabobo.dsusideloader.ui.cards.installation.content.NotInstallingCardContent
 import vegabobo.dsusideloader.ui.cards.installation.content.ProgressableCardContent
+import vegabobo.dsusideloader.ui.screen.home.InstallationCardAction
 import vegabobo.dsusideloader.ui.screen.home.InstallationCardState
 
 @Composable
@@ -25,6 +26,7 @@ fun InstallationCardStep(
     onClickRebootToDynOS: () -> Unit,
     onClickViewLogs: () -> Unit,
     onClickViewCommands: () -> Unit,
+    onCardAction: (InstallationCardAction) -> Unit = {},
 ) {
     when (uiState.installationStep) {
         InstallationStep.NOT_INSTALLING ->
@@ -78,9 +80,9 @@ fun InstallationCardStep(
                 showProgressBar = true,
                 progress = uiState.installationProgress,
             )
-        InstallationStep.DECOMPRESSING_GZIP ->
+        InstallationStep.VERIFYING_IMAGE_SIZE ->
             ProgressableCardContent(
-                text = stringResource(R.string.extracting_file),
+                text = stringResource(R.string.verifying_image_size),
                 textSecondButton = stringResource(id = R.string.cancel),
                 onClickSecondButton = onClickCancelInstallation,
                 showProgressBar = true,
@@ -151,6 +153,28 @@ fun InstallationCardStep(
                 showProgressBar = true,
                 progress = uiState.installationProgress,
             )
+        InstallationStep.CANCELLING ->
+            ProgressableCardContent(
+                text = stringResource(R.string.cancelling_installation),
+                showProgressBar = true,
+                isIndeterminate = true,
+            )
+        InstallationStep.CANCEL_REQUESTED_CLEANUP_UNVERIFIED ->
+            ProgressableCardContent(
+                text = stringResource(R.string.cancel_cleanup_unverified, uiState.errorText),
+                textFirstButton = stringResource(id = R.string.view_logs),
+                onClickFirstButton = onClickViewLogs,
+                textSecondButton = stringResource(id = R.string.mreturn),
+                onClickSecondButton = { onCardAction(InstallationCardAction.ACK_CLEANUP_INCOMPLETE) },
+            )
+        InstallationStep.ERROR_CLEANUP_INCOMPLETE ->
+            ProgressableCardContent(
+                text = stringResource(R.string.cleanup_incomplete, uiState.errorText),
+                textFirstButton = stringResource(id = R.string.view_logs),
+                onClickFirstButton = onClickViewLogs,
+                textSecondButton = stringResource(id = R.string.mreturn),
+                onClickSecondButton = { onCardAction(InstallationCardAction.ACK_CLEANUP_INCOMPLETE) },
+            )
         InstallationStep.ERROR ->
             ProgressableCardContent(
                 text = stringResource(R.string.unknown_error, uiState.errorText),
@@ -161,7 +185,10 @@ fun InstallationCardStep(
             )
         InstallationStep.ERROR_CANCELED ->
             ProgressableCardContent(
-                text = stringResource(R.string.installation_canceled),
+                // A detail is only set when something went wrong while cancelling (e.g. the
+                // temporary files could not be removed).
+                text = stringResource(R.string.installation_canceled) +
+                    if (uiState.errorText.isNotBlank()) "\n${uiState.errorText}" else "",
                 textFirstButton = stringResource(id = R.string.view_logs),
                 onClickFirstButton = onClickViewLogs,
                 textSecondButton = stringResource(id = R.string.mreturn),
@@ -183,7 +210,7 @@ fun InstallationCardStep(
             )
         InstallationStep.ERROR_CREATE_PARTITION ->
             ProgressableCardContent(
-                text = stringResource(R.string.failed_create_partition),
+                text = stringResource(R.string.failed_create_partition, uiState.errorText),
                 textSecondButton = stringResource(id = R.string.mreturn),
                 onClickSecondButton = onClickClear,
             )
@@ -241,6 +268,28 @@ fun InstallationCardStep(
                 textSecondButton = stringResource(id = R.string.mreturn),
                 onClickSecondButton = onClickClear,
             )
+        InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED ->
+            ProgressableCardContent(
+                text = stringResource(R.string.installation_submitted_unconfirmed) + "\n\n" +
+                    stringResource(R.string.installation_submitted_unconfirmed_details) +
+                    storageRestoreText(uiState),
+                textFirstButton = stringResource(R.string.restore_storage),
+                onClickFirstButton = if (uiState.storageRestorePending) {
+                    { onCardAction(InstallationCardAction.RESTORE_STORAGE) }
+                } else {
+                    null
+                },
+                textSecondButton = stringResource(id = R.string.done_in_system_dsu),
+                onClickSecondButton = { onCardAction(InstallationCardAction.ACK_UNCONFIRMED) },
+            )
+        InstallationStep.STORAGE_RESTORE_PENDING ->
+            ProgressableCardContent(
+                text = stringResource(R.string.storage_restore_prompt) + storageRestoreText(uiState),
+                textFirstButton = stringResource(R.string.restore_storage),
+                onClickFirstButton = { onCardAction(InstallationCardAction.RESTORE_STORAGE) },
+                textSecondButton = stringResource(R.string.later),
+                onClickSecondButton = { onCardAction(InstallationCardAction.RESTORE_STORAGE_LATER) },
+            )
         InstallationStep.INSTALL_SUCCESS ->
             ProgressableCardContent(
                 text = stringResource(R.string.installation_finished_rootless),
@@ -249,7 +298,7 @@ fun InstallationCardStep(
             )
         InstallationStep.INSTALL_SUCCESS_REBOOT_DYN_OS ->
             ProgressableCardContent(
-                text = stringResource(R.string.installation_finished),
+                text = stringResource(R.string.installation_finished) + skippedImagesText(uiState),
                 textFirstButton = stringResource(id = R.string.reboot_into_dsu),
                 onClickFirstButton = onClickRebootToDynOS,
                 textSecondButton = stringResource(id = R.string.discard),
@@ -265,3 +314,20 @@ fun InstallationCardStep(
             )
     }
 }
+
+@Composable
+private fun storageRestoreText(uiState: InstallationCardState): String = when {
+    !uiState.storageRestorePending -> ""
+    uiState.storageRestoreBlocked -> "\n\n" + stringResource(R.string.storage_restore_blocked)
+    uiState.storageRestoreError.isNotEmpty() ->
+        "\n\n" + stringResource(R.string.storage_restore_failed, uiState.storageRestoreError)
+    else -> ""
+}
+
+@Composable
+private fun skippedImagesText(uiState: InstallationCardState): String =
+    if (uiState.skippedImages.isEmpty()) {
+        ""
+    } else {
+        "\n\n" + stringResource(R.string.skipped_images, uiState.skippedImages.joinToString())
+    }

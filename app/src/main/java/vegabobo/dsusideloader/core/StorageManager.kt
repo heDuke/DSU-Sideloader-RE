@@ -8,6 +8,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -90,26 +91,43 @@ class StorageManager(
         return workspaceFolder
     }
 
-    fun cleanWorkspaceFolder(deleteAlsoGzFile: Boolean) {
-        for (file in getWorkspaceFolder().listFiles()) {
-            if (deleteAlsoGzFile || !file.name.toString().endsWith("gz")) {
-                file.delete()
-            }
+    private class DocumentEntry(val doc: DocumentFile) : WorkspaceRoot {
+        override val name: String get() = doc.name.toString()
+        override val isDirectory: Boolean get() = doc.isDirectory
+        override fun list(): List<WorkspaceEntry> = doc.listFiles().map { DocumentEntry(it) }
+        override fun delete(): Boolean = doc.delete()
+        override fun findOrCreateDirectory(name: String): WorkspaceEntry =
+            DocumentEntry(
+                doc.findFile(name)?.takeIf { it.isDirectory }
+                    ?: doc.createDirectory(name)
+                    ?: throw IOException("Unable to create workspace directory $name"),
+            )
+    }
+
+    private fun taskFolder(taskKey: String): DocumentFile {
+        require(TaskWorkspaces.isTaskKey(taskKey)) { "Not a task workspace: $taskKey" }
+        val entry = DocumentEntry(getWorkspaceFolder()).findOrCreateDirectory(taskKey)
+        return (entry as DocumentEntry).doc
+    }
+
+    /**
+     * Deletes the files of task [taskKey] only (see [TaskWorkspaces.clean]); never touches the
+     * directories of other tasks.
+     */
+    fun cleanTaskWorkspace(taskKey: String, deleteAlsoGzFile: Boolean) {
+        TaskWorkspaces.clean(DocumentEntry(getWorkspaceFolder()), taskKey, deleteAlsoGzFile)
+    }
+
+    /** Removes leftovers of earlier tasks; only call while task [taskKey] owns the task gate. */
+    fun removeStaleWorkspaces(taskKey: String): List<String> =
+        TaskWorkspaces.removeAllExcept(DocumentEntry(getWorkspaceFolder()), taskKey)
+
+    private fun copyFileToSafFolder(inputFile: Uri, taskKey: String): Uri {
+        val clone: DocumentFile = createDocumentFile(getFilenameFromUri(inputFile), taskKey)
+        openInputStream(inputFile).use { input ->
+            openOutputStream(clone.uri).use { output -> IOUtils.copy(input, output) }
         }
-    }
-
-    private fun copyFileToSafFolder(inputFile: Uri): Uri {
-        val clone: DocumentFile = createDocumentFile(getFilenameFromUri(inputFile))
-        IOUtils.copy(openInputStream(inputFile), openOutputStream(clone.uri))
         return clone.uri
-    }
-
-    fun writeStringToFile(content: String, filename: String): String {
-        val file = createDocumentFile(filename)
-        val outputStream = openOutputStream(file.uri)
-        outputStream.write(content.toByteArray())
-        outputStream.close()
-        return FilenameUtils.getFilePath(file.uri, false).replace("file://", "")
     }
 
     fun writeStringToExternalFileDir(content: String, filename: String): String {
@@ -125,9 +143,7 @@ class StorageManager(
     }
 
     fun writeStringToUri(content: String, uri: Uri): String {
-        val outputStream = appContext.contentResolver.openOutputStream(uri)!!
-        outputStream.write(content.toByteArray())
-        outputStream.close()
+        openOutputStream(uri).use { it.write(content.toByteArray()) }
         return FilenameUtils.getFilePath(uri, false).replace("file://", "")
     }
 
@@ -145,20 +161,24 @@ class StorageManager(
     }
 
     fun openInputStream(uri: Uri): InputStream {
-        return appContext.contentResolver.openInputStream(uri)!!
+        return appContext.contentResolver.openInputStream(uri)
+            ?: throw FileNotFoundException("Unable to open $uri for reading")
     }
 
     fun openOutputStream(uri: Uri): OutputStream {
-        return appContext.contentResolver.openOutputStream(uri)!!
+        return appContext.contentResolver.openOutputStream(uri)
+            ?: throw FileNotFoundException("Unable to open $uri for writing")
     }
 
-    fun createDocumentFile(filename: String): DocumentFile {
-        return getWorkspaceFolder().createFile("application/octet-stream", filename)!!
+    /** Creates [filename] in the workspace directory of task [taskKey]. */
+    fun createDocumentFile(filename: String, taskKey: String): DocumentFile {
+        return taskFolder(taskKey).createFile("application/octet-stream", filename)
+            ?: throw IOException("Unable to create $filename in workspace folder $taskKey")
     }
 
-    fun getUriSafe(uri: Uri): Uri {
+    fun getUriSafe(uri: Uri, taskKey: String): Uri {
         if (isPathWrong(uri)) {
-            return copyFileToSafFolder(uri)
+            return copyFileToSafFolder(uri, taskKey)
         }
         return uri
     }

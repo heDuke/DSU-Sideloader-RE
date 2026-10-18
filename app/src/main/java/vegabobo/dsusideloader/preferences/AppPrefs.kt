@@ -20,4 +20,7 @@ object AppPrefs {
     const val UMOUNT_SD = "umount_sd"
     const val DISABLE_STORAGE_CHECK = "disable_storage_check"
     const val FULL_LOGCAT_LOGGING = "full_logcat_logging"
+
+    // Volumes unmounted for an installation that still have to be remounted.
+    const val PENDING_SD_REMOUNT = "pending_sd_remount"
 }

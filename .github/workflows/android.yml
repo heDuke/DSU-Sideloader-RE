@@ -12,9 +12,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: set up JDK 17
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
@@ -22,12 +22,22 @@ jobs:
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-      
+
+    # Check only: this step must never rewrite sources (run ./gradlew formatKotlin locally).
+    - name: Kotlin style check
+      run: ./gradlew lintKotlin
+
+    - name: Unit tests
+      run: ./gradlew testDebugUnitTest
+
     - name: Build with Gradle
       run: ./gradlew assembleMiniDebug
-      
+
+    - name: Fail if the build modified tracked files
+      run: git diff --exit-code
+
     - name: Archive artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: outputs-apk-minidebug
         path: app/build/outputs/apk/miniDebug
