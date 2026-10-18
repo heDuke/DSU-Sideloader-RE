@@ -260,9 +260,24 @@ fun InstallationCardStep(
         InstallationStep.INSTALL_SUBMITTED_UNCONFIRMED ->
             ProgressableCardContent(
                 text = stringResource(R.string.installation_submitted_unconfirmed) + "\n\n" +
-                    stringResource(R.string.installation_submitted_unconfirmed_details),
+                    stringResource(R.string.installation_submitted_unconfirmed_details) +
+                    storageRestoreText(uiState),
+                textFirstButton = stringResource(R.string.restore_storage),
+                onClickFirstButton = if (uiState.storageRestorePending) {
+                    { onCardAction(InstallationCardAction.RESTORE_STORAGE) }
+                } else {
+                    null
+                },
                 textSecondButton = stringResource(id = R.string.done_in_system_dsu),
                 onClickSecondButton = { onCardAction(InstallationCardAction.ACK_UNCONFIRMED) },
+            )
+        InstallationStep.STORAGE_RESTORE_PENDING ->
+            ProgressableCardContent(
+                text = stringResource(R.string.storage_restore_prompt) + storageRestoreText(uiState),
+                textFirstButton = stringResource(R.string.restore_storage),
+                onClickFirstButton = { onCardAction(InstallationCardAction.RESTORE_STORAGE) },
+                textSecondButton = stringResource(R.string.later),
+                onClickSecondButton = { onCardAction(InstallationCardAction.RESTORE_STORAGE_LATER) },
             )
         InstallationStep.INSTALL_SUCCESS ->
             ProgressableCardContent(
@@ -287,4 +302,13 @@ fun InstallationCardStep(
                 onClickSecondButton = onClickClear,
             )
     }
+}
+
+@Composable
+private fun storageRestoreText(uiState: InstallationCardState): String = when {
+    !uiState.storageRestorePending -> ""
+    uiState.storageRestoreBlocked -> "\n\n" + stringResource(R.string.storage_restore_blocked)
+    uiState.storageRestoreError.isNotEmpty() ->
+        "\n\n" + stringResource(R.string.storage_restore_failed, uiState.storageRestoreError)
+    else -> ""
 }

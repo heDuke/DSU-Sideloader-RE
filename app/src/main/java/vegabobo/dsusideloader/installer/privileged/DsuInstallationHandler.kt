@@ -17,6 +17,7 @@ import vegabobo.dsusideloader.service.PrivilegedProvider
 open class DsuInstallationHandler(
     private val session: Session,
     private val sdCardRemounter: SdCardRemounter,
+    private val bootId: String? = null,
     private val onSubmitted: () -> Unit = {},
     private val onError: (String) -> Unit = {},
 ) {
@@ -27,8 +28,11 @@ open class DsuInstallationHandler(
         PrivilegedProvider.run(onFail = { onError("Privileged service unavailable") }) {
             try {
                 if (session.preferences.isUnmountSdCard) {
-                    sdCardRemounter.unmountPublicVolumes(asVolumeOps())
+                    sdCardRemounter.unmountPublicVolumes(asVolumeOps(), bootId)
                 }
+                // From here on the system DSU app owns the outcome: the remount record must not
+                // be resolved automatically anymore (see RemountPolicy).
+                sdCardRemounter.markHandedToSystem()
                 forwardInstallationToDSU(this)
                 onSubmitted()
             } catch (e: Exception) {

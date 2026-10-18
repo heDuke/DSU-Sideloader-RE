@@ -47,6 +47,7 @@ enum class InstallationStep {
     // Request handed to the DSU system app, but the result can't be observed
     // (no READ_LOGS permission). Not a success state.
     INSTALL_SUBMITTED_UNCONFIRMED,
+    STORAGE_RESTORE_PENDING,
 
     // Once installation is finished (confirmed)
     INSTALL_SUCCESS,

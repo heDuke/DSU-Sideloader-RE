@@ -250,4 +250,9 @@
     <string name="cleanup_incomplete" tools:ignore="MissingTranslation">Cleanup not completed / system state unknown.\n%1$s\n\nNext: check the DSU notification and the installed DSU status; discard any leftover DSU before installing again (restart the device if it cannot be discarded).</string>
     <string name="installation_submitted_unconfirmed_details" tools:ignore="MissingTranslation">Details: without the READ_LOGS permission this app cannot read the system DSU progress.</string>
     <string name="done_in_system_dsu" tools:ignore="MissingTranslation">Finished or cancelled in system</string>
+    <string name="restore_storage" tools:ignore="MissingTranslation">Restore storage</string>
+    <string name="later" tools:ignore="MissingTranslation">Later</string>
+    <string name="storage_restore_prompt" tools:ignore="MissingTranslation">The SD card was unmounted for a DSU installation and has not been restored, because the result of that installation is unknown. Finish or cancel the installation in the system DSU page (or its notification) first, then tap Restore storage.</string>
+    <string name="storage_restore_blocked" tools:ignore="MissingTranslation">The system still reports a DSU installation in progress. Finish or cancel it first.</string>
+    <string name="storage_restore_failed" tools:ignore="MissingTranslation">Could not restore: %1$s. Try again, or reinsert the card / restart the device.</string>
 </resources>

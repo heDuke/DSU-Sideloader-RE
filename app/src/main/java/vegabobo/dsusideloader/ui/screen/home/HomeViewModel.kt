@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import vegabobo.dsusideloader.BuildConfig
+import vegabobo.dsusideloader.IPrivilegedService
 import vegabobo.dsusideloader.core.BaseViewModel
 import vegabobo.dsusideloader.core.StorageManager
 import vegabobo.dsusideloader.installer.adb.AdbInstallationHandler
@@ -28,6 +30,8 @@ import vegabobo.dsusideloader.installer.privileged.DataStorePendingRemountStore
 import vegabobo.dsusideloader.installer.privileged.DsuInstallationHandler
 import vegabobo.dsusideloader.installer.privileged.LogcatDiagnostic
 import vegabobo.dsusideloader.installer.privileged.SdCardRemounter
+import vegabobo.dsusideloader.installer.privileged.SystemDsuState
+import vegabobo.dsusideloader.installer.privileged.asVolumeOps
 import vegabobo.dsusideloader.installer.root.CleanupResult
 import vegabobo.dsusideloader.installer.root.DSUInstaller
 import vegabobo.dsusideloader.installer.root.DsuInstallResult
@@ -68,6 +72,10 @@ class HomeViewModel @Inject constructor(
     private val sdCardRemounter =
         SdCardRemounter(DataStorePendingRemountStore(dataStore)) { Log.d("SdCardRemounter", it) }
 
+    /** Task that unmounted SD volumes; only its confirmed terminal outcome may remount them. */
+    @Volatile
+    private var taskThatUnmounted: Long? = null
+
     private val allocPercentage = DevicePropUtils.getGsidBinaryAllowedPerc()
     val allocPercentageInt = String.format("%.0f", allocPercentage * 100).toInt()
 
@@ -101,13 +109,95 @@ class HomeViewModel @Inject constructor(
                 sheetDisplay = SheetDisplayState.NONE,
             )
         }
-        // Leaving any installation state ends the installation from our point of view.
-        remountSdCards("installation card reset")
+        // Leaving a card is NOT a terminal outcome: never remount here (review R3).
+        refreshStorageRestorePending()
     }
 
-    private fun remountSdCards(reason: String) {
+    /** Remount only for the confirmed terminal outcome of the task that unmounted. */
+    private fun remountSdCardsIfOwnedBy(id: Long, reason: String) {
+        if (taskThatUnmounted != id) return
+        taskThatUnmounted = null
         viewModelScope.launch(Dispatchers.IO) {
             sdCardRemounter.remountPendingIfAny(reason)
+            refreshStorageRestorePending()
+        }
+    }
+
+    private fun currentBootId(): String? =
+        runCatching { Settings.Global.getString(application.contentResolver, Settings.Global.BOOT_COUNT) }
+            .getOrNull()
+
+    private fun querySystemDsuState(service: IPrivilegedService): SystemDsuState {
+        // getInstallationProgress needs MANAGE_DYNAMIC_SYSTEM: only meaningful as root.
+        if (!session.isRoot()) return SystemDsuState.UNKNOWN
+        return runCatching {
+            if (service.installationProgress.status == 1) SystemDsuState.INSTALLING else SystemDsuState.IDLE
+        }.getOrDefault(SystemDsuState.UNKNOWN)
+    }
+
+    private fun refreshStorageRestorePending() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pending = sdCardRemounter.hasPending()
+            showStorageRestore(pending, promptIfIdle = pending && !taskGate.isBusy())
+        }
+    }
+
+    private fun showStorageRestore(pending: Boolean, promptIfIdle: Boolean, blocked: Boolean = false, error: String = "") {
+        updateInstallationCard {
+            val step = when {
+                !pending && it.installationStep == InstallationStep.STORAGE_RESTORE_PENDING ->
+                    InstallationStep.NOT_INSTALLING
+                promptIfIdle && it.installationStep == InstallationStep.NOT_INSTALLING ->
+                    InstallationStep.STORAGE_RESTORE_PENDING
+                else -> it.installationStep
+            }
+            it.copy(
+                installationStep = step,
+                storageRestorePending = pending,
+                storageRestoreBlocked = pending && blocked,
+                storageRestoreError = if (pending) error else "",
+            )
+        }
+    }
+
+    /**
+     * App start: volumes left unmounted by a previous process. Auto-remount only when the
+     * policy proves no installation can still depend on it; otherwise ask the user.
+     */
+    private fun checkPendingStorageOnAppStart() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!sdCardRemounter.hasPending()) return@launch
+            val bootId = currentBootId()
+            PrivilegedProvider.run(
+                onFail = {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        sdCardRemounter.onAppStart(null, bootId, SystemDsuState.UNKNOWN)
+                        refreshStorageRestorePending()
+                    }
+                },
+            ) {
+                sdCardRemounter.onAppStart(asVolumeOps(), bootId, querySystemDsuState(this))
+                refreshStorageRestorePending()
+            }
+        }
+    }
+
+    /** Explicit "restore storage": refuse while gsid reports an installation in progress. */
+    private fun onRestoreStorage() {
+        PrivilegedProvider.run(
+            onFail = { showStorageRestore(true, promptIfIdle = false, error = "privileged service unavailable") },
+        ) {
+            if (querySystemDsuState(this) == SystemDsuState.INSTALLING) {
+                showStorageRestore(true, promptIfIdle = false, blocked = true)
+                return@run
+            }
+            val failed = sdCardRemounter.remountPending(asVolumeOps(), "user restore")
+            if (failed.isNotEmpty()) {
+                showStorageRestore(true, promptIfIdle = false, error = failed.joinToString())
+                return@run
+            }
+            taskThatUnmounted = null
+            showStorageRestore(false, promptIfIdle = false)
         }
     }
 
@@ -119,7 +209,7 @@ class HomeViewModel @Inject constructor(
 
     init {
         // Volumes left unmounted by a previous process (e.g. killed mid-installation).
-        remountSdCards("app start")
+        checkPendingStorageOnAppStart()
 
         // Check if a DSU is already installed
         // Root-only because MANAGE_DYNAMIC_SYSTEM is required
@@ -352,7 +442,6 @@ class HomeViewModel @Inject constructor(
             Log.w(tag, "Ignoring result of stale task $id")
             return
         }
-        remountSdCards("root installation finished: ${outcome.step}")
         updateInstallationCard {
             it.copy(installationStep = outcome.step, errorText = outcome.detail)
         }
@@ -368,9 +457,11 @@ class HomeViewModel @Inject constructor(
         }
         val canTrackResult =
             session.isRoot() || OperationModeUtils.isReadLogsPermissionGranted(application)
+        if (session.preferences.isUnmountSdCard) taskThatUnmounted = id
         DsuInstallationHandler(
             session = session,
             sdCardRemounter = sdCardRemounter,
+            bootId = currentBootId(),
             onSubmitted = {
                 if (!canTrackResult) {
                     // Without READ_LOGS we cannot observe the DSU app: the request was submitted,
@@ -493,7 +584,7 @@ class HomeViewModel @Inject constructor(
         if (!taskGate.finish(id)) return
         session.dsuInstallation = DSUInstallationSource()
         if (outcome.step == InstallationStep.ERROR_CANCELED) {
-            remountSdCards("installation cancelled")
+            remountSdCardsIfOwnedBy(id, "installation cancelled")
         }
         updateInstallationCard { it.copy(installationStep = outcome.step, errorText = outcome.detail) }
     }
@@ -501,6 +592,7 @@ class HomeViewModel @Inject constructor(
     private fun onTaskFailed(id: Long, error: InstallationStep, errorContent: String) {
         if (taskGate.isCancelling(id)) return // the cancel path reports the terminal state
         if (!taskGate.finish(id)) return
+        remountSdCardsIfOwnedBy(id, "installation error: $error")
         onInstallationError(error, errorContent)
     }
 
@@ -509,7 +601,7 @@ class HomeViewModel @Inject constructor(
         if (taskGate.isCancelling(id)) return
         if (!taskGate.finish(id)) return
         updateInstallationCard { it.copy(installationStep = InstallationStep.INSTALL_SUCCESS) }
-        remountSdCards("installation completed")
+        remountSdCardsIfOwnedBy(id, "installation completed")
     }
 
     //
@@ -578,11 +670,18 @@ class HomeViewModel @Inject constructor(
         when (action) {
             InstallationCardAction.ACK_CLEANUP_INCOMPLETE -> onAcknowledgeCleanupIncomplete()
             InstallationCardAction.ACK_UNCONFIRMED -> onAcknowledgeUnconfirmed()
+            InstallationCardAction.RESTORE_STORAGE -> onRestoreStorage()
+            InstallationCardAction.RESTORE_STORAGE_LATER ->
+                updateInstallationCard { it.copy(installationStep = InstallationStep.NOT_INSTALLING) }
         }
     }
 
-    /** The user states the system DSU flow was finished or cancelled; ends our task. */
+    /**
+     * The user states the system DSU flow was finished or cancelled; ends our task.
+     * This does not remount: the pending record stays and the restore prompt is shown.
+     */
     private fun onAcknowledgeUnconfirmed() {
+        taskThatUnmounted = null
         taskGate.current()?.let { taskGate.finish(it.id) }
         resetInstallationCard()
     }
@@ -754,7 +853,6 @@ class HomeViewModel @Inject constructor(
         updateInstallationCard { it.copy(installationProgress = progress) }
 
     private fun onInstallationError(error: InstallationStep, errorContent: String) {
-        remountSdCards("installation error: $error")
         updateInstallationCard {
             if (error == InstallationStep.ERROR_SELINUX && !session.isRoot()) {
                 it.copy(
