@@ -15,7 +15,6 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,7 +71,8 @@ class HomeViewModel @Inject constructor(
     var checkReadLogsPermission = true
     var disabledStorageCheck = false
 
-    var installationJob: Job = Job()
+    // No shared "current installation Job": every task owns its Job (taskGate.jobOf(id)), so
+    // code of an old task can never run on, or cancel, the Job of a newer task.
     var logger: LogcatDiagnostic? = null
     private val sdCardRemounter =
         SdCardRemounter(DataStorePendingRemountStore(dataStore), log = { Log.d("SdCardRemounter", it) })
@@ -340,7 +340,6 @@ class HomeViewModel @Inject constructor(
             Log.w(tag, "Installation task still running or cleaning up: ${taskGate.current()}")
             return null
         }
-        installationJob = Job()
         updateInstallationCard { it.copy(skippedImages = emptyList()) }
         return id
     }
@@ -354,7 +353,7 @@ class HomeViewModel @Inject constructor(
         dismissSheet()
         val id = beginTask() ?: return
         updateInstallationCard { it.copy(installationStep = InstallationStep.PROCESSING) }
-        val job = installationJob
+        val job = taskGate.jobOf(id) ?: return
         val taskKey = taskGate.workspaceOf(id) ?: return
         // The whole entry (preference reads included) is one task step: if it is cancelled
         // before it starts, while suspended in a preference read, or fails anywhere, the
@@ -453,11 +452,12 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun startDSUInstallation(id: Long) {
-        if (!taskGate.setPhase(id, InstallTaskGate.Phase.ROOT_INSTALL)) {
+        // The task's own Job (once ROOT_INSTALL, a cancel is reported by the pipeline itself).
+        val job = taskGate.jobOf(id)
+        if (job == null || !taskGate.setPhase(id, InstallTaskGate.Phase.ROOT_INSTALL)) {
             if (taskGate.isCancelling(id)) onTaskCancelledWithoutSystemChanges(id)
             return
         }
-        val job = installationJob
         // Never run the (blocking) installation on the main thread. Not bound to the job:
         // the pipeline polls job.isCancelled and must always run its cleanup and report.
         viewModelScope.launch(Dispatchers.IO) {
@@ -490,26 +490,27 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun startPrivilegedInstallation(id: Long) {
-        if (!taskGate.setPhase(id, InstallTaskGate.Phase.DSU_APP)) {
+        // The task's own Job: never a shared field a newer task may have replaced meanwhile.
+        val job = taskGate.jobOf(id)
+        if (job == null || !taskGate.acceptsUpdates(id)) {
             if (taskGate.isCancelling(id)) onTaskCancelledWithoutSystemChanges(id)
             return
         }
-        ifAccepts(id) {
-            updateInstallationCard { it.copy(installationStep = InstallationStep.WAITING_USER_CONFIRMATION) }
-        }
         val canTrackResult =
             session.isRoot() || OperationModeUtils.isReadLogsPermissionGranted(application)
-        if (session.preferences.isUnmountSdCard) taskThatUnmounted = id
-        // Parameters are captured now; the submission runs as a child of the task's Job, so
-        // the cancel path can stop it and wait for it (see cancelDsuAppInstallation).
+        val unmountSdCard = session.preferences.isUnmountSdCard
+        // Parameters are captured now (still in phase PREPARING: a cancel here is reported
+        // below, when the phase switch is refused). The submission runs as a child of the
+        // task's Job and re-checks the task's identity/cancel state before startActivity.
         val submission = DsuInstallationHandler(
             session = session,
             sdCardRemounter = sdCardRemounter,
             bootId = currentBootId(),
+            isOwner = { taskGate.acceptsUpdates(id) },
         ).submission
         val stepJob = TaskSteps.launch(
             scope = viewModelScope,
-            context = Dispatchers.IO + installationJob,
+            context = Dispatchers.IO + job,
             start = CoroutineStart.LAZY,
             onUnsettled = { cause -> onSubmissionStepUnsettled(id, cause, submission) },
         ) { step ->
@@ -532,9 +533,22 @@ class HomeViewModel @Inject constructor(
                 DsuSubmission.Result.Cancelled -> Unit
             }
         }
-        // Published before the step can run: a concurrent cancel either sees it (and waits
-        // for it) or cancelled the task Job first (then the lazy step never runs).
-        dsuSubmission = DsuSubmissionStep(id, submission, stepJob)
+        val dsuStep = DsuSubmissionStep(id, submission, stepJob)
+        // Phase switch and step registration are one atomic gate operation: a concurrent
+        // cancel either comes first (switch refused, the lazy step never runs and the task is
+        // reported here) or sees DSU_APP together with this step and waits for it.
+        val registered = taskGate.setPhase(id, InstallTaskGate.Phase.DSU_APP) {
+            dsuSubmission = dsuStep
+            if (unmountSdCard) taskThatUnmounted = id
+        }
+        if (!registered) {
+            stepJob.cancel()
+            if (taskGate.isCancelling(id)) onTaskCancelledWithoutSystemChanges(id)
+            return
+        }
+        ifAccepts(id) {
+            updateInstallationCard { it.copy(installationStep = InstallationStep.WAITING_USER_CONFIRMATION) }
+        }
         stepJob.start()
         if (canTrackResult) {
             startLogging(id)
@@ -543,6 +557,9 @@ class HomeViewModel @Inject constructor(
 
     // Track and diagnose installation by reading logcat
     private fun startLogging(id: Long) {
+        // Only for the current, non-cancelled task, on that task's own Job.
+        val job = taskGate.jobOf(id)
+        if (job == null || !taskGate.acceptsUpdates(id)) return
         logger?.destroy()
         val newLogger = LogcatDiagnostic(
             onInstallationError = { step, text -> onTaskFailed(id, step, text) },
@@ -552,7 +569,7 @@ class HomeViewModel @Inject constructor(
             onLogLineReceived = { if (taskGate.isCurrent(id)) onLogLineReceived() },
         )
         logger = newLogger
-        viewModelScope.launch(Dispatchers.IO + installationJob) {
+        viewModelScope.launch(Dispatchers.IO + job) {
             newLogger.shouldLogEverything = readBoolPref(AppPrefs.FULL_LOGCAT_LOGGING)
             newLogger.startLogging(generateUsefulLogInfo())
         }
@@ -590,7 +607,8 @@ class HomeViewModel @Inject constructor(
             return
         }
         updateInstallationCard { it.copy(installationStep = InstallationStep.CANCELLING, errorText = "") }
-        installationJob.cancel()
+        // The Job of the task being cancelled (captured atomically by requestCancel).
+        task.job.cancel()
         when (task.phase) {
             // Preparation coroutine / root pipeline report their own cancellation result.
             InstallTaskGate.Phase.PREPARING, InstallTaskGate.Phase.ROOT_INSTALL -> Unit

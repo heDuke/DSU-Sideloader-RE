@@ -22,6 +22,10 @@ interface DsuSubmitTarget {
  * cancels it and the caller can wait for it. Cancellation is checked after waiting for the
  * service, before and after unmounting, and right before startActivity. The last check and
  * [cancel] are serialised: once [cancel] returned false, startActivity will not be called.
+ *
+ * [isOwner] is the task's own identity check (current task and not cancelling); it is
+ * re-checked at every stage and under the lock right before startActivity, so a request of a
+ * task that was cancelled or replaced never reaches the system, whatever Job it runs on.
  */
 class DsuSubmission(
     private val remounter: SdCardRemounter,
@@ -29,6 +33,7 @@ class DsuSubmission(
     private val bootId: String?,
     private val connect: suspend () -> DsuSubmitTarget?,
     private val log: (String) -> Unit = {},
+    private val isOwner: () -> Boolean = { true },
 ) {
     sealed class Result {
         object Submitted : Result()
@@ -54,7 +59,7 @@ class DsuSubmission(
 
     private suspend fun checkActive() {
         currentCoroutineContext().ensureActive()
-        if (synchronized(lock) { cancelled }) throw CancellationException("submission cancelled")
+        if (synchronized(lock) { cancelled } || !isOwner()) throw CancellationException("submission cancelled")
     }
 
     suspend fun submit(): Result {
@@ -72,7 +77,7 @@ class DsuSubmission(
             remounter.markHandedToSystem()
             checkActive()
             synchronized(lock) {
-                if (cancelled) return Result.Cancelled
+                if (cancelled || !isOwner()) return Result.Cancelled
                 reachedSystem = true
             }
             target.startDsuInstall()

@@ -19,6 +19,8 @@ class DsuInstallationHandler(
     session: Session,
     sdCardRemounter: SdCardRemounter,
     bootId: String? = null,
+    /** Identity/cancel check of the task that owns this request (see [DsuSubmission]). */
+    isOwner: () -> Boolean = { true },
 ) {
 
     private val tag = this.javaClass.simpleName
@@ -33,6 +35,7 @@ class DsuInstallationHandler(
         bootId = bootId,
         connect = { PrivilegedProvider.awaitService()?.let { ServiceTarget(it) } },
         log = { Log.d(tag, it) },
+        isOwner = isOwner,
     )
 
     private inner class ServiceTarget(private val service: IPrivilegedService) : DsuSubmitTarget {
